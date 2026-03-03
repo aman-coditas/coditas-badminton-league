@@ -1,23 +1,23 @@
 "use client";
 
-import { useRef, useState } from "react";
+export const dynamic = "force-dynamic";
 
-export const dynamic = 'force-dynamic';
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useForm, type FieldErrors, type UseFormRegister } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import TeamRevealModal from "@/components/TeamRevealModal";
-import { registerTeam, convertFileToBase64 } from "@/lib/api";
-import { Loader2, CheckCircle2, X } from "lucide-react";
-import Image from "next/image";
+import CblDisclaimer from "@/components/CblDisclaimer";
+import CblGuidelines from "@/components/CblGuidelines";
+import { validateEmailsBeforePayment } from "@/lib/api";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 const jersey_size_options = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"] as const;
 
 const phone_schema = z.string().regex(/^\d{10}$/, "Must be a 10-digit number");
@@ -29,7 +29,8 @@ const coditas_email_schema = z
   .email("Invalid email address")
   .refine((value) => value.trim().toLowerCase().endsWith("@coditas.com"), "Please use coditas email");
 
-const registrationSchema = z.object({
+const team_details_schema = z
+  .object({
   malePlayer1Name: z.string().min(2, "Name must be at least 2 characters"),
   malePlayer1Email: coditas_email_schema,
   malePlayer1Dob: dob_schema,
@@ -73,24 +74,49 @@ const registrationSchema = z.object({
   femalePlayer2JerseyNumber: jersey_number_schema,
   femalePlayer2JerseyName: z.string().min(1, "Jersey name is required"),
   femalePlayer2JerseySize: jersey_size_schema,
+})
+  .superRefine((data, ctx) => {
+    const fields = ["malePlayer1Email", "malePlayer2Email", "femalePlayer1Email", "femalePlayer2Email"] as const;
+    const normalized = fields.map((key) => ({ key, value: (data[key] ?? "").trim().toLowerCase() }));
+    const seen = new Map<string, (typeof fields)[number]>();
 
-  transactionId: z.string().min(5, "Transaction ID must be at least 5 characters"),
-  emergencyContactName: z.string().min(2, "Emergency contact name is required"),
-  emergencyContactNumber: phone_schema,
-  refundUpiId: z.string().min(3, "Refund UPI ID is required"),
-  paymentProof: z.any()
-    .refine((file) => file?.[0], "Payment proof is required")
-    .refine(
-      (file) => file?.[0]?.size <= MAX_FILE_SIZE,
-      "Max file size is 5MB"
-    )
-    .refine(
-      (file) => ACCEPTED_IMAGE_TYPES.includes(file?.[0]?.type),
-      "Only .jpg, .jpeg, .png formats are supported"
-    ),
+    for (const row of normalized) {
+      if (!row.value) continue;
+      const prev = seen.get(row.value);
+      if (!prev) {
+        seen.set(row.value, row.key);
+        continue;
+      }
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [row.key],
+        message: "Email must be unique within the team",
+      });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [prev],
+        message: "Email must be unique within the team",
+      });
+    }
+  });
+
+const individual_details_schema = z.object({
+  playerName: z.string().min(2, "Name must be at least 2 characters"),
+  playerEmail: coditas_email_schema,
+  playerDob: dob_schema,
+  playerContactNumber: phone_schema,
+  playerWhatsAppNumber: phone_schema,
+  playerAddress: z.string().min(2, "Address is required"),
+  playerEmployeeId: z.string().min(2, "Employee ID is required"),
+  playerJerseyNumber: jersey_number_schema,
+  playerJerseyName: z.string().min(1, "Jersey name is required"),
+  playerJerseySize: jersey_size_schema,
+  gender: z.enum(["Male", "Female", "Other"], { message: "Select gender" }),
 });
 
-type RegistrationFormData = z.infer<typeof registrationSchema>;
+type TeamDetailsFormData = z.infer<typeof team_details_schema>;
+type IndividualDetailsFormData = z.infer<typeof individual_details_schema>;
 
 type PlayerPrefix = "malePlayer1" | "malePlayer2" | "femalePlayer1" | "femalePlayer2";
 
@@ -102,10 +128,10 @@ function PlayerFields({
 }: {
   prefix: PlayerPrefix;
   labelPrefix: string;
-  register: UseFormRegister<RegistrationFormData>;
-  errors: FieldErrors<RegistrationFormData>;
+  register: UseFormRegister<TeamDetailsFormData>;
+  errors: FieldErrors<TeamDetailsFormData>;
 }) {
-  type FieldName = keyof RegistrationFormData & string;
+  type FieldName = keyof TeamDetailsFormData & string;
 
   const field_error = (field: FieldName): string | undefined => {
     const message = (errors as Record<string, { message?: unknown }>)[field]?.message;
@@ -118,24 +144,22 @@ function PlayerFields({
     suffix,
     label,
     type = "text",
-    placeholder,
     inputMode,
-    list,
     maxLength,
     sanitizeDigitsMax,
+    list,
   }: {
     suffix: string;
     label: string;
     type?: string;
-    placeholder?: string;
     inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
-    list?: string;
     maxLength?: number;
     sanitizeDigitsMax?: number;
+    list?: string;
   }) => {
     const name = field_id(suffix) as FieldName;
     const message = field_error(name);
-    const field = register(name as keyof RegistrationFormData);
+    const field = register(name as keyof TeamDetailsFormData);
 
     return (
       <div className="space-y-2">
@@ -143,19 +167,15 @@ function PlayerFields({
         <Input
           id={name}
           type={type}
-          placeholder={placeholder}
           inputMode={inputMode}
-          list={list}
           maxLength={maxLength}
+          list={list}
           {...field}
           onChange={(e) => {
             if (sanitizeDigitsMax) {
               const digits_only = e.target.value.replace(/\D/g, "");
               e.target.value = digits_only.slice(0, sanitizeDigitsMax);
-            } else if (typeof maxLength === "number" && maxLength > 0) {
-              e.target.value = e.target.value.slice(0, maxLength);
             }
-
             field.onChange(e);
           }}
           className={message ? "border-red-500" : ""}
@@ -198,11 +218,7 @@ function PlayerFields({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {render_text_field({ suffix: "Address", label: `${labelPrefix} Address *` })}
-        {render_text_field({
-          suffix: "JerseyNumber",
-          label: `${labelPrefix} Jersey Number *`,
-          inputMode: "numeric",
-        })}
+        {render_text_field({ suffix: "JerseyNumber", label: `${labelPrefix} Jersey Number *`, inputMode: "numeric" })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -212,7 +228,7 @@ function PlayerFields({
           <Input
             id={`${prefix}JerseySize`}
             list={jersey_size_list_id}
-            {...register(`${prefix}JerseySize` as keyof RegistrationFormData)}
+            {...register(`${prefix}JerseySize` as keyof TeamDetailsFormData)}
             className={field_error(`${prefix}JerseySize` as FieldName) ? "border-red-500" : ""}
           />
           <datalist id={jersey_size_list_id}>
@@ -230,399 +246,456 @@ function PlayerFields({
 }
 
 export default function RegistrationPage() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [teamName, setTeamName] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [qrSrc, setQrSrc] = useState<string>("/assets/qr-code.png");
   const { toast } = useToast();
-  const paymentProofInputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"team" | "individual">("team");
+  const [hasAccepted, setHasAccepted] = useState<boolean>(false);
+  const [isCheckingEmails, setIsCheckingEmails] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-    resetField,
-  } = useForm<RegistrationFormData>({
-    resolver: zodResolver(registrationSchema),
+  const teamForm = useForm<TeamDetailsFormData>({
+    resolver: zodResolver(team_details_schema),
+    mode: "onChange",
+    reValidateMode: "onChange",
     shouldFocusError: false,
   });
 
-  const onSubmit = async (data: RegistrationFormData) => {
-    setIsSubmitting(true);
+  const individualForm = useForm<IndividualDetailsFormData>({
+    resolver: zodResolver(individual_details_schema),
+    mode: "onChange",
+    reValidateMode: "onChange",
+    shouldFocusError: false,
+  });
 
+  const reset_team_details = teamForm.reset;
+  const reset_individual_details = individualForm.reset;
+
+  const canProceed = useMemo(() => {
+    return activeTab === "team" ? teamForm.formState.isValid : individualForm.formState.isValid;
+  }, [activeTab, individualForm.formState.isValid, teamForm.formState.isValid]);
+
+  // Restore details when coming back from payment page.
+  // We keep the stored draft until final submission succeeds on payment page.
+  useEffect(() => {
     try {
-      const file = data.paymentProof[0];
-      
-      const paymentScreenshotBase64 = await convertFileToBase64(file);
+      const raw = window.sessionStorage.getItem("cbl:registration:draft");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { kind?: unknown; details?: unknown } | null;
+      if (!parsed || typeof parsed !== "object") return;
 
-      const payload: Record<string, string> = {
-        "Male Player 1 Name": data.malePlayer1Name,
-        "Male Player 1 Email": data.malePlayer1Email,
-        "Male Player 1 DOB": data.malePlayer1Dob,
-        "Male Player 1 Contact Number": data.malePlayer1ContactNumber,
-        "Male Player 1 WhatsApp Number": data.malePlayer1WhatsAppNumber,
-        "Male Player 1 Address": data.malePlayer1Address,
-        "Male Player 1 Employee ID": data.malePlayer1EmployeeId,
-        "Male Player 1 Jersey Number": data.malePlayer1JerseyNumber,
-        "Male Player 1 Jersey Name": data.malePlayer1JerseyName,
-        "Male Player 1 Jersey Size": data.malePlayer1JerseySize,
-
-        "Male Player 2 Name": data.malePlayer2Name,
-        "Male Player 2 Email": data.malePlayer2Email,
-        "Male Player 2 DOB": data.malePlayer2Dob,
-        "Male Player 2 Contact Number": data.malePlayer2ContactNumber,
-        "Male Player 2 WhatsApp Number": data.malePlayer2WhatsAppNumber,
-        "Male Player 2 Address": data.malePlayer2Address,
-        "Male Player 2 Employee ID": data.malePlayer2EmployeeId,
-        "Male Player 2 Jersey Number": data.malePlayer2JerseyNumber,
-        "Male Player 2 Jersey Name": data.malePlayer2JerseyName,
-        "Male Player 2 Jersey Size": data.malePlayer2JerseySize,
-
-        "Female Player 1 Name": data.femalePlayer1Name,
-        "Female Player 1 Email": data.femalePlayer1Email,
-        "Female Player 1 DOB": data.femalePlayer1Dob,
-        "Female Player 1 Contact Number": data.femalePlayer1ContactNumber,
-        "Female Player 1 WhatsApp Number": data.femalePlayer1WhatsAppNumber,
-        "Female Player 1 Address": data.femalePlayer1Address,
-        "Female Player 1 Employee ID": data.femalePlayer1EmployeeId,
-        "Female Player 1 Jersey Number": data.femalePlayer1JerseyNumber,
-        "Female Player 1 Jersey Name": data.femalePlayer1JerseyName,
-        "Female Player 1 Jersey Size": data.femalePlayer1JerseySize,
-
-        "Female Player 2 Name": data.femalePlayer2Name,
-        "Female Player 2 Email": data.femalePlayer2Email,
-        "Female Player 2 DOB": data.femalePlayer2Dob,
-        "Female Player 2 Contact Number": data.femalePlayer2ContactNumber,
-        "Female Player 2 WhatsApp Number": data.femalePlayer2WhatsAppNumber,
-        "Female Player 2 Address": data.femalePlayer2Address,
-        "Female Player 2 Employee ID": data.femalePlayer2EmployeeId,
-        "Female Player 2 Jersey Number": data.femalePlayer2JerseyNumber,
-        "Female Player 2 Jersey Name": data.femalePlayer2JerseyName,
-        "Female Player 2 Jersey Size": data.femalePlayer2JerseySize,
-
-        "Transaction ID": data.transactionId,
-        "Emergency contact name": data.emergencyContactName,
-        "Emergency contact number": data.emergencyContactNumber,
-        "Refund UPI ID": data.refundUpiId,
-        paymentScreenshotBase64,
-      };
-
-      const response = await registerTeam(payload);
-
-      if (response.success) {
-        setTeamName(response.data.teamName);
-        setModalOpen(true);
-        reset();
-        setFileName("");
-        
-        toast({
-          title: "Success!",
-          description: response.message,
-        });
-      } else {
-        toast({
-          title: "Registration Failed",
-          description: response.message || "Something went wrong. Please try again.",
-          variant: "destructive",
-        });
+      if (parsed.kind === "team" && parsed.details && typeof parsed.details === "object") {
+        setActiveTab("team");
+        reset_team_details(parsed.details as TeamDetailsFormData);
+        return;
       }
-    } catch (error) {
+
+      if (parsed.kind === "individual" && parsed.details && typeof parsed.details === "object") {
+        setActiveTab("individual");
+        reset_individual_details(parsed.details as IndividualDetailsFormData);
+      }
+    } catch {
+      // ignore
+    }
+  }, [reset_individual_details, reset_team_details]);
+
+  const onNext = async () => {
+    const isValid = activeTab === "team" ? await teamForm.trigger() : await individualForm.trigger();
+    if (!isValid) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to register. Please try again.",
+        title: "Please fill all required fields",
+        description: "Complete the form to continue to payment.",
         variant: "destructive",
       });
-    } finally {
-      setIsSubmitting(false);
+      return;
     }
+
+    const emails_to_check =
+      activeTab === "team"
+        ? [
+            teamForm.getValues("malePlayer1Email"),
+            teamForm.getValues("malePlayer2Email"),
+            teamForm.getValues("femalePlayer1Email"),
+            teamForm.getValues("femalePlayer2Email"),
+          ]
+        : [individualForm.getValues("playerEmail")];
+
+    setIsCheckingEmails(true);
+    try {
+      const { conflicts } = await validateEmailsBeforePayment({ emails: emails_to_check });
+      const conflict_set = new Set((conflicts ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean));
+
+      if (conflict_set.size > 0) {
+        if (activeTab === "team") {
+          (["malePlayer1Email", "malePlayer2Email", "femalePlayer1Email", "femalePlayer2Email"] as const).forEach((field) => {
+            const value = (teamForm.getValues(field) ?? "").trim().toLowerCase();
+            if (!value) return;
+            if (!conflict_set.has(value)) return;
+            teamForm.setError(field, { type: "validate", message: "Email already registered" });
+          });
+        } else {
+          const value = (individualForm.getValues("playerEmail") ?? "").trim().toLowerCase();
+          if (value && conflict_set.has(value)) individualForm.setError("playerEmail", { type: "validate", message: "Email already registered" });
+        }
+
+        toast({
+          title: "Email already registered",
+          description: "Please use a different email to continue.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (err) {
+      toast({
+        title: "Validation failed",
+        description: err instanceof Error ? err.message : "Failed to validate emails. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    } finally {
+      setIsCheckingEmails(false);
+    }
+
+    const draft =
+      activeTab === "team"
+        ? { kind: "team" as const, details: teamForm.getValues(), createdAt: new Date().toISOString() }
+        : { kind: "individual" as const, details: individualForm.getValues(), createdAt: new Date().toISOString() };
+
+    try {
+      window.sessionStorage.setItem("cbl:registration:draft", JSON.stringify(draft));
+    } catch {
+      // ignore storage errors
+    }
+
+    router.push("/registration/payment");
   };
 
   return (
-    <div className="container mx-auto px-4 py-12">
+    <div className="mx-auto w-full max-w-full md:max-w-[calc(100vw-4rem)] px-4 md:px-8 py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="max-w-4xl mx-auto"
+        className="w-full"
       >
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold neon-text mb-4">
-            Team Registration
-          </h1>
-          <p className="text-gray-400">
-            Fill in the details to register your team for the tournament
-          </p>
+          <h1 className="text-4xl md:text-5xl font-bold neon-text mb-4">Registration</h1>
+          <p className="text-gray-400">Fill player details first, then proceed to payment.</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-          <motion.div
-            className="glass rounded-xl p-6 md:p-8"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <h2 className="text-2xl font-bold mb-6 text-neon-blue">
-              Male Players
-            </h2>
-            
-            <div className="space-y-6">
-              <PlayerFields
-                prefix="malePlayer1"
-                labelPrefix="Male Player 1"
-                register={register}
-                errors={errors}
-              />
-
-              <div className="h-px bg-border/60" />
-
-              <PlayerFields
-                prefix="malePlayer2"
-                labelPrefix="Male Player 2"
-                register={register}
-                errors={errors}
-              />
+        <div className="mb-8 overflow-x-auto">
+          <div className="flex justify-center min-w-full">
+            <div className="inline-flex gap-2 rounded-2xl border border-border bg-white/70 p-2 backdrop-blur-md w-fit">
+            <button
+              type="button"
+              onClick={() => setActiveTab("team")}
+              className={[
+                "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors",
+                activeTab === "team"
+                  ? "bg-neon-blue text-white"
+                  : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900",
+              ].join(" ")}
+            >
+              Team registration
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("individual")}
+              className={[
+                "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors",
+                activeTab === "individual"
+                  ? "bg-neon-blue text-white"
+                  : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900",
+              ].join(" ")}
+            >
+              Individual registration
+            </button>
             </div>
-          </motion.div>
+          </div>
+        </div>
 
-          <motion.div
-            className="glass rounded-xl p-6 md:p-8"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 }}
-          >
-            <h2 className="text-2xl font-bold mb-6 text-neon-blue">
-              Female Players
-            </h2>
-            
-            <div className="space-y-6">
-              <PlayerFields
-                prefix="femalePlayer1"
-                labelPrefix="Female Player 1"
-                register={register}
-                errors={errors}
-              />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="lg:col-span-3">
+            <CblGuidelines />
+          </div>
 
-              <div className="h-px bg-border/60" />
-
-              <PlayerFields
-                prefix="femalePlayer2"
-                labelPrefix="Female Player 2"
-                register={register}
-                errors={errors}
-              />
-            </div>
-          </motion.div>
-
-          <motion.div
-            className="glass rounded-xl p-6 md:p-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <h2 className="text-2xl font-bold mb-6">Payment Details</h2>
-            
-            <div className="space-y-6">
-              <div className="flex flex-col items-center space-y-4">
-                <div className="glass rounded-lg p-6 text-center">
-                  <div className="w-48 h-48 bg-white rounded-lg border border-border mb-4 overflow-hidden relative mx-auto">
-                    <Image
-                      src={qrSrc}
-                      alt="Payment QR Code"
-                      fill
-                      sizes="192px"
-                      className="object-contain p-2"
-                      onError={(e) => {
-                        if (qrSrc !== "/qr-code.png") setQrSrc("/qr-code.png");
-                        else e.currentTarget.style.display = "none";
-                      }}
+          <div className="lg:col-span-6">
+            {activeTab === "team" ? (
+              <div className="space-y-8">
+                <motion.div
+                  className="glass rounded-xl p-6 md:p-8"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  <h2 className="text-2xl font-bold mb-6 text-neon-blue">Male Players</h2>
+                  <div className="space-y-6">
+                    <PlayerFields
+                      prefix="malePlayer1"
+                      labelPrefix="Male Player 1"
+                      register={teamForm.register}
+                      errors={teamForm.formState.errors}
+                    />
+                    <div className="h-px bg-border/60" />
+                    <PlayerFields
+                      prefix="malePlayer2"
+                      labelPrefix="Male Player 2"
+                      register={teamForm.register}
+                      errors={teamForm.formState.errors}
                     />
                   </div>
-                  <p className="text-sm text-slate-600">
-                    Scan to pay ₹2000
-                  </p>
-                  <p className="text-neon-blue font-mono mt-2">
-                    UPI: coditas@upi
-                  </p>
-                </div>
-              </div>
+                </motion.div>
 
-              <div className="space-y-2">
-                <Label htmlFor="transactionId">Payment transaction ID *</Label>
-                <Input
-                  id="transactionId"
-                  {...register("transactionId")}
-                  className={errors.transactionId ? "border-red-500" : ""}
-                />
-                {errors.transactionId && (
-                  <p className="text-red-500 text-sm">
-                    {errors.transactionId.message}
-                  </p>
-                )}
+                <motion.div
+                  className="glass rounded-xl p-6 md:p-8"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.15 }}
+                >
+                  <h2 className="text-2xl font-bold mb-6 text-neon-blue">Female Players</h2>
+                  <div className="space-y-6">
+                    <PlayerFields
+                      prefix="femalePlayer1"
+                      labelPrefix="Female Player 1"
+                      register={teamForm.register}
+                      errors={teamForm.formState.errors}
+                    />
+                    <div className="h-px bg-border/60" />
+                    <PlayerFields
+                      prefix="femalePlayer2"
+                      labelPrefix="Female Player 2"
+                      register={teamForm.register}
+                      errors={teamForm.formState.errors}
+                    />
+                  </div>
+                </motion.div>
+              </div>
+            ) : (
+              <motion.div
+                className="glass rounded-xl p-6 md:p-8"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+              >
+                <h2 className="text-2xl font-bold mb-6 text-neon-blue">Player Details</h2>
+
+                <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="playerName">Name *</Label>
+                  <Input
+                    id="playerName"
+                    {...individualForm.register("playerName")}
+                    className={individualForm.formState.errors.playerName ? "border-red-500" : ""}
+                  />
+                  {individualForm.formState.errors.playerName ? (
+                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerName.message}</p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="playerEmail">Email *</Label>
+                  <Input
+                    id="playerEmail"
+                    type="email"
+                    {...individualForm.register("playerEmail")}
+                    className={individualForm.formState.errors.playerEmail ? "border-red-500" : ""}
+                  />
+                  {individualForm.formState.errors.playerEmail ? (
+                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerEmail.message}</p>
+                  ) : null}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="emergencyContactName">Emergency contact name *</Label>
+                  <Label htmlFor="playerDob">DOB *</Label>
                   <Input
-                    id="emergencyContactName"
-                    {...register("emergencyContactName")}
-                    className={errors.emergencyContactName ? "border-red-500" : ""}
+                    id="playerDob"
+                    type="date"
+                    {...individualForm.register("playerDob")}
+                    className={individualForm.formState.errors.playerDob ? "border-red-500" : ""}
                   />
-                  {errors.emergencyContactName && (
-                    <p className="text-red-500 text-sm">
-                      {errors.emergencyContactName.message}
-                    </p>
-                  )}
+                  {individualForm.formState.errors.playerDob ? (
+                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerDob.message}</p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="emergencyContactNumber">Emergency contact number *</Label>
-                  {(() => {
-                    const emergency_register = register("emergencyContactNumber");
-                    return (
+                  <Label htmlFor="gender">Gender *</Label>
+                  <Input
+                    id="gender"
+                    list="gender-options"
+                    {...individualForm.register("gender")}
+                    className={individualForm.formState.errors.gender ? "border-red-500" : ""}
+                  />
+                  <datalist id="gender-options">
+                    <option value="Male" />
+                    <option value="Female" />
+                    <option value="Other" />
+                  </datalist>
+                  {individualForm.formState.errors.gender ? (
+                    <p className="text-red-500 text-sm">{individualForm.formState.errors.gender.message}</p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {(() => {
+                  const field = individualForm.register("playerContactNumber");
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor="playerContactNumber">Contact Number *</Label>
                       <Input
-                        id="emergencyContactNumber"
+                        id="playerContactNumber"
                         inputMode="numeric"
                         maxLength={10}
-                        {...emergency_register}
+                        {...field}
                         onChange={(e) => {
-                          const digits_only = e.target.value.replace(/\D/g, "");
+                          const digits_only = e.target.value.replace(/\\D/g, "");
                           e.target.value = digits_only.slice(0, 10);
-                          emergency_register.onChange(e);
+                          field.onChange(e);
                         }}
-                        className={errors.emergencyContactNumber ? "border-red-500" : ""}
+                        className={individualForm.formState.errors.playerContactNumber ? "border-red-500" : ""}
                       />
-                    );
-                  })()}
-                  {errors.emergencyContactNumber && (
+                      {individualForm.formState.errors.playerContactNumber ? (
+                        <p className="text-red-500 text-sm">
+                          {individualForm.formState.errors.playerContactNumber.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+
+                {(() => {
+                  const field = individualForm.register("playerWhatsAppNumber");
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor="playerWhatsAppNumber">WhatsApp Number *</Label>
+                      <Input
+                        id="playerWhatsAppNumber"
+                        inputMode="numeric"
+                        maxLength={10}
+                        {...field}
+                        onChange={(e) => {
+                          const digits_only = e.target.value.replace(/\\D/g, "");
+                          e.target.value = digits_only.slice(0, 10);
+                          field.onChange(e);
+                        }}
+                        className={individualForm.formState.errors.playerWhatsAppNumber ? "border-red-500" : ""}
+                      />
+                      {individualForm.formState.errors.playerWhatsAppNumber ? (
+                        <p className="text-red-500 text-sm">
+                          {individualForm.formState.errors.playerWhatsAppNumber.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="playerEmployeeId">Employee ID *</Label>
+                  <Input
+                    id="playerEmployeeId"
+                    {...individualForm.register("playerEmployeeId")}
+                    className={individualForm.formState.errors.playerEmployeeId ? "border-red-500" : ""}
+                  />
+                  {individualForm.formState.errors.playerEmployeeId ? (
                     <p className="text-red-500 text-sm">
-                      {errors.emergencyContactNumber.message}
+                      {individualForm.formState.errors.playerEmployeeId.message}
                     </p>
-                  )}
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="playerAddress">Address *</Label>
+                  <Input
+                    id="playerAddress"
+                    {...individualForm.register("playerAddress")}
+                    className={individualForm.formState.errors.playerAddress ? "border-red-500" : ""}
+                  />
+                  {individualForm.formState.errors.playerAddress ? (
+                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerAddress.message}</p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="playerJerseyNumber">Jersey Number *</Label>
+                  <Input
+                    id="playerJerseyNumber"
+                    inputMode="numeric"
+                    {...individualForm.register("playerJerseyNumber")}
+                    className={individualForm.formState.errors.playerJerseyNumber ? "border-red-500" : ""}
+                  />
+                  {individualForm.formState.errors.playerJerseyNumber ? (
+                    <p className="text-red-500 text-sm">
+                      {individualForm.formState.errors.playerJerseyNumber.message}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="playerJerseyName">Jersey Name *</Label>
+                  <Input
+                    id="playerJerseyName"
+                    {...individualForm.register("playerJerseyName")}
+                    className={individualForm.formState.errors.playerJerseyName ? "border-red-500" : ""}
+                  />
+                  {individualForm.formState.errors.playerJerseyName ? (
+                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerJerseyName.message}</p>
+                  ) : null}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="refundUpiId">Refund UPI ID *</Label>
+                <Label htmlFor="playerJerseySize">Jersey Size *</Label>
                 <Input
-                  id="refundUpiId"
-                  {...register("refundUpiId")}
-                  className={errors.refundUpiId ? "border-red-500" : ""}
+                  id="playerJerseySize"
+                  list="individual-jersey-sizes"
+                  {...individualForm.register("playerJerseySize")}
+                  className={individualForm.formState.errors.playerJerseySize ? "border-red-500" : ""}
                 />
-                {errors.refundUpiId && (
-                  <p className="text-red-500 text-sm">
-                    {errors.refundUpiId.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="paymentProof">Payment Screenshot (PNG, JPG, JPEG) *</Label>
-                <div className="space-y-3">
-                  {(() => {
-                    const paymentProofRegister = register("paymentProof");
-
-                    return (
-                      <>
-                        <Input
-                          id="paymentProof"
-                          type="file"
-                          accept="image/png,image/jpeg,image/jpg"
-                          className="sr-only"
-                          {...paymentProofRegister}
-                          ref={(el) => {
-                            paymentProofRegister.ref(el);
-                            paymentProofInputRef.current = el;
-                          }}
-                          onChange={(e) => {
-                            paymentProofRegister.onChange(e);
-                            const file = e.target.files?.[0];
-                            setFileName(file ? file.name : "");
-                          }}
-                        />
-
-                        <div className="flex">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className={errors.paymentProof ? "border-red-500" : ""}
-                            onClick={() => paymentProofInputRef.current?.click()}
-                          >
-                            Choose file
-                          </Button>
-                        </div>
-
-                        {fileName ? (
-                          <div className="flex items-center gap-3">
-                            <div className="inline-flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1 max-w-full">
-                              <CheckCircle2 className="w-4 h-4 shrink-0" />
-                              <span className="truncate max-w-[240px]">{fileName}</span>
-                            </div>
-
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
-                              onClick={() => {
-                                setFileName("");
-                                resetField("paymentProof");
-                                if (paymentProofInputRef.current) paymentProofInputRef.current.value = "";
-                              }}
-                            >
-                              <X className="w-4 h-4" />
-                              Remove
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500">
-                            No file selected
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-                {errors.paymentProof && (
-                  <p className="text-red-500 text-sm">
-                    {errors.paymentProof.message as string}
-                  </p>
-                )}
+                <datalist id="individual-jersey-sizes">
+                  {jersey_size_options.map((size) => (
+                    <option key={size} value={size} />
+                  ))}
+                </datalist>
+                {individualForm.formState.errors.playerJerseySize ? (
+                  <p className="text-red-500 text-sm">{individualForm.formState.errors.playerJerseySize.message}</p>
+                ) : null}
               </div>
             </div>
-          </motion.div>
+              </motion.div>
+            )}
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="flex justify-center"
-          >
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              variant="neon"
-              size="lg"
-              className="w-full md:w-auto min-w-[200px]"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Registering...
-                </>
-              ) : (
-                "Register Team"
-              )}
-            </Button>
-          </motion.div>
-        </form>
+            <div className="flex flex-col items-center mt-10">
+              <Button
+                type="button"
+                onClick={onNext}
+                disabled={!canProceed || isCheckingEmails}
+                variant="neon"
+                size="lg"
+                className="w-full md:w-auto min-w-[200px]"
+              >
+                {isCheckingEmails ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Next
+                  </>
+                ) : (
+                  "Next"
+                )}
+              </Button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-3">
+            <CblDisclaimer accepted={hasAccepted} onAcceptedChange={setHasAccepted} />
+          </div>
+        </div>
       </motion.div>
-
-      <TeamRevealModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        teamName={teamName}
-      />
     </div>
   );
 }

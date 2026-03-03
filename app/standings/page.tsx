@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { fetchIsRegistrationClosed } from "@/lib/api";
+import { fetchIsRegistrationClosedCached } from "@/lib/api";
 
 type Standing = {
   teamName: string;
@@ -53,7 +53,7 @@ export default function StandingsPage() {
 
     (async () => {
       try {
-        const closed = await fetchIsRegistrationClosed();
+        const closed = await fetchIsRegistrationClosedCached();
         if (!is_active) return;
         setIsRegistrationClosed(closed);
       } catch (err) {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { fetchIsRegistrationClosed } from "@/lib/api";
+import { fetchIsRegistrationClosedCached } from "@/lib/api";
 
 type Fixture = {
   matchId: string;
@@ -202,7 +202,7 @@ export default function FixturesPage() {
 
     (async () => {
       try {
-        const closed = await fetchIsRegistrationClosed();
+        const closed = await fetchIsRegistrationClosedCached();
         if (!is_active) return;
         setIsRegistrationClosed(closed);
       } catch (err) {

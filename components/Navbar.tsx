@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
-import { fetchIsRegistrationClosed } from "@/lib/api";
+import { fetchIsRegistrationClosedCached } from "@/lib/api";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -24,7 +24,7 @@ export default function Navbar() {
         // ignore storage errors
       }
 
-      const value = await fetchIsRegistrationClosed();
+      const value = await fetchIsRegistrationClosedCached();
       if (!is_active) return;
       setIsRegistrationClosed(value);
       try {

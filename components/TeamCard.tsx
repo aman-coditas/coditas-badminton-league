@@ -49,7 +49,15 @@ export default function TeamCard({ team }: TeamCardProps) {
                       <Mail className="w-4 h-4 text-gray-400 mt-1" />
                       <div>
                         <p className="text-sm font-medium">{player.name}</p>
-                        <p className="text-xs text-gray-400">{player.email}</p>
+                        <p className="text-xs text-gray-400">
+                          {player.email}
+                          {player.contactNumber ? (
+                            <>
+                              {" "}
+                              <span className="text-slate-400">•</span> {player.contactNumber}
+                            </>
+                          ) : null}
+                        </p>
                       </div>
                     </div>
                   ))}
