@@ -246,6 +246,7 @@ export default function RegistrationPage() {
   const [activeTab, setActiveTab] = useState<"team" | "individual">("team");
   const [hasAccepted, setHasAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formKey, setFormKey] = useState(0);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [teamName, setTeamName] = useState("");
@@ -433,6 +434,7 @@ export default function RegistrationPage() {
         setHasAccepted(false);
         setFileName("");
         if (paymentProofInputRef.current) paymentProofInputRef.current.value = "";
+        setFormKey((k) => k + 1);
 
         toast({ title: "Success!", description: response.message });
       } else {
@@ -497,7 +499,7 @@ export default function RegistrationPage() {
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-8 items-start">
+        <div key={formKey} className="flex flex-col lg:flex-row gap-8 items-start">
           <div className="w-full lg:w-[70%]">
             {activeTab === "team" ? (
               <div className="space-y-8">
@@ -767,8 +769,8 @@ export default function RegistrationPage() {
                   </div>
                   <p className="text-sm text-slate-600">
                     {activeTab === "team"
-                      ? "Scan to pay ₹2000 team registration fee"
-                      : "Scan to pay ₹500 individual registration fee"}
+                      ? "Scan to pay ₹2000"
+                      : "Scan to pay ₹500"}
                   </p>
                   <p className="text-neon-blue font-mono mt-2">UPI: 9971461729@goaxb</p>
                 </div>
