@@ -146,8 +146,7 @@ function PlayerFields({
     // Immediately clear any previously auto-filled values
     if (autoFilledKeys.size > 0) {
       for (const key of autoFilledKeys) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setValue(key as keyof TeamDetailsFormData, "" as any, { shouldValidate: false });
+        setValue(key as keyof TeamDetailsFormData, "" as never, { shouldValidate: false });
       }
       setAutoFilledKeys(new Set());
     }
