@@ -2,84 +2,92 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
-import { useForm, type FieldErrors, type UseFormRegister } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, type FieldErrors, type UseFormRegister } from "react-hook-form";
 import * as z from "zod";
-import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, X } from "lucide-react";
 
+import TeamRevealModal from "@/components/TeamRevealModal";
+import CblDisclaimer from "@/components/CblDisclaimer";
+import CblGuidelines from "@/components/CblGuidelines";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import CblDisclaimer from "@/components/CblDisclaimer";
-import CblGuidelines from "@/components/CblGuidelines";
-import { validateEmailsBeforePayment } from "@/lib/api";
+import { convertFileToBase64, registerIndividual, registerTeam } from "@/lib/api";
 
 const jersey_size_options = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"] as const;
 
 const phone_schema = z.string().regex(/^\d{10}$/, "Must be a 10-digit number");
 const dob_schema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter DOB");
-const jersey_number_schema = z.string().regex(/^\d{1,3}$/, "Jersey number must be numeric");
 const jersey_size_schema = z.enum(jersey_size_options, { message: "Select a valid jersey size" });
 const coditas_email_schema = z
   .string()
   .email("Invalid email address")
   .refine((value) => value.trim().toLowerCase().endsWith("@coditas.com"), "Please use coditas email");
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png"];
+
+const payment_schema = z.object({
+  transactionId: z.string().min(5, "Transaction ID must be at least 5 characters"),
+  refundUpiId: z.string().min(3, "Refund UPI ID is required"),
+  paymentProof: z
+    .any()
+    .refine((file) => file?.[0], "Payment proof is required")
+    .refine((file) => file?.[0]?.size <= MAX_FILE_SIZE, "Max file size is 5MB")
+    .refine((file) => ACCEPTED_IMAGE_TYPES.includes(file?.[0]?.type), "Only .jpg, .jpeg, .png formats are supported"),
+});
+
 const team_details_schema = z
   .object({
-  malePlayer1Name: z.string().min(2, "Name must be at least 2 characters"),
-  malePlayer1Email: coditas_email_schema,
-  malePlayer1Dob: dob_schema,
-  malePlayer1ContactNumber: phone_schema,
-  malePlayer1WhatsAppNumber: phone_schema,
-  malePlayer1Address: z.string().min(2, "Address is required"),
-  malePlayer1EmployeeId: z.string().min(2, "Employee ID is required"),
-  malePlayer1JerseyNumber: jersey_number_schema,
-  malePlayer1JerseyName: z.string().min(1, "Jersey name is required"),
-  malePlayer1JerseySize: jersey_size_schema,
+    malePlayer1EmployeeId: z.string().min(2, "Employee ID is required"),
+    malePlayer1Name: z.string().min(2, "Name must be at least 2 characters"),
+    malePlayer1Email: coditas_email_schema,
+    malePlayer1ContactNumber: phone_schema,
+    malePlayer1Dob: dob_schema,
+    malePlayer1Address: z.string().min(2, "Address is required"),
+    malePlayer1JerseyName: z.string().min(1, "Name on jersey is required"),
+    malePlayer1JerseySize: jersey_size_schema,
+    malePlayer1EmergencyContactNumber: phone_schema,
 
-  malePlayer2Name: z.string().min(2, "Name must be at least 2 characters"),
-  malePlayer2Email: coditas_email_schema,
-  malePlayer2Dob: dob_schema,
-  malePlayer2ContactNumber: phone_schema,
-  malePlayer2WhatsAppNumber: phone_schema,
-  malePlayer2Address: z.string().min(2, "Address is required"),
-  malePlayer2EmployeeId: z.string().min(2, "Employee ID is required"),
-  malePlayer2JerseyNumber: jersey_number_schema,
-  malePlayer2JerseyName: z.string().min(1, "Jersey name is required"),
-  malePlayer2JerseySize: jersey_size_schema,
+    malePlayer2EmployeeId: z.string().min(2, "Employee ID is required"),
+    malePlayer2Name: z.string().min(2, "Name must be at least 2 characters"),
+    malePlayer2Email: coditas_email_schema,
+    malePlayer2ContactNumber: phone_schema,
+    malePlayer2Dob: dob_schema,
+    malePlayer2Address: z.string().min(2, "Address is required"),
+    malePlayer2JerseyName: z.string().min(1, "Name on jersey is required"),
+    malePlayer2JerseySize: jersey_size_schema,
+    malePlayer2EmergencyContactNumber: phone_schema,
 
-  femalePlayer1Name: z.string().min(2, "Name must be at least 2 characters"),
-  femalePlayer1Email: coditas_email_schema,
-  femalePlayer1Dob: dob_schema,
-  femalePlayer1ContactNumber: phone_schema,
-  femalePlayer1WhatsAppNumber: phone_schema,
-  femalePlayer1Address: z.string().min(2, "Address is required"),
-  femalePlayer1EmployeeId: z.string().min(2, "Employee ID is required"),
-  femalePlayer1JerseyNumber: jersey_number_schema,
-  femalePlayer1JerseyName: z.string().min(1, "Jersey name is required"),
-  femalePlayer1JerseySize: jersey_size_schema,
+    femalePlayer1EmployeeId: z.string().min(2, "Employee ID is required"),
+    femalePlayer1Name: z.string().min(2, "Name must be at least 2 characters"),
+    femalePlayer1Email: coditas_email_schema,
+    femalePlayer1ContactNumber: phone_schema,
+    femalePlayer1Dob: dob_schema,
+    femalePlayer1Address: z.string().min(2, "Address is required"),
+    femalePlayer1JerseyName: z.string().min(1, "Name on jersey is required"),
+    femalePlayer1JerseySize: jersey_size_schema,
+    femalePlayer1EmergencyContactNumber: phone_schema,
 
-  femalePlayer2Name: z.string().min(2, "Name must be at least 2 characters"),
-  femalePlayer2Email: coditas_email_schema,
-  femalePlayer2Dob: dob_schema,
-  femalePlayer2ContactNumber: phone_schema,
-  femalePlayer2WhatsAppNumber: phone_schema,
-  femalePlayer2Address: z.string().min(2, "Address is required"),
-  femalePlayer2EmployeeId: z.string().min(2, "Employee ID is required"),
-  femalePlayer2JerseyNumber: jersey_number_schema,
-  femalePlayer2JerseyName: z.string().min(1, "Jersey name is required"),
-  femalePlayer2JerseySize: jersey_size_schema,
-})
+    femalePlayer2EmployeeId: z.string().min(2, "Employee ID is required"),
+    femalePlayer2Name: z.string().min(2, "Name must be at least 2 characters"),
+    femalePlayer2Email: coditas_email_schema,
+    femalePlayer2ContactNumber: phone_schema,
+    femalePlayer2Dob: dob_schema,
+    femalePlayer2Address: z.string().min(2, "Address is required"),
+    femalePlayer2JerseyName: z.string().min(1, "Name on jersey is required"),
+    femalePlayer2JerseySize: jersey_size_schema,
+    femalePlayer2EmergencyContactNumber: phone_schema,
+  })
   .superRefine((data, ctx) => {
     const fields = ["malePlayer1Email", "malePlayer2Email", "femalePlayer1Email", "femalePlayer2Email"] as const;
     const normalized = fields.map((key) => ({ key, value: (data[key] ?? "").trim().toLowerCase() }));
     const seen = new Map<string, (typeof fields)[number]>();
-
     for (const row of normalized) {
       if (!row.value) continue;
       const prev = seen.get(row.value);
@@ -87,36 +95,27 @@ const team_details_schema = z
         seen.set(row.value, row.key);
         continue;
       }
-
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [row.key],
-        message: "Email must be unique within the team",
-      });
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [prev],
-        message: "Email must be unique within the team",
-      });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [row.key], message: "Email must be unique within the team" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [prev], message: "Email must be unique within the team" });
     }
   });
 
 const individual_details_schema = z.object({
+  playerEmployeeId: z.string().min(2, "Employee ID is required"),
   playerName: z.string().min(2, "Name must be at least 2 characters"),
   playerEmail: coditas_email_schema,
-  playerDob: dob_schema,
   playerContactNumber: phone_schema,
-  playerWhatsAppNumber: phone_schema,
+  playerDob: dob_schema,
   playerAddress: z.string().min(2, "Address is required"),
-  playerEmployeeId: z.string().min(2, "Employee ID is required"),
-  playerJerseyNumber: jersey_number_schema,
-  playerJerseyName: z.string().min(1, "Jersey name is required"),
+  playerJerseyName: z.string().min(1, "Name on jersey is required"),
   playerJerseySize: jersey_size_schema,
+  playerEmergencyContactNumber: phone_schema,
   gender: z.enum(["Male", "Female", "Other"], { message: "Select gender" }),
 });
 
 type TeamDetailsFormData = z.infer<typeof team_details_schema>;
 type IndividualDetailsFormData = z.infer<typeof individual_details_schema>;
+type PaymentFormData = z.infer<typeof payment_schema>;
 
 type PlayerPrefix = "malePlayer1" | "malePlayer2" | "femalePlayer1" | "femalePlayer2";
 
@@ -147,7 +146,6 @@ function PlayerFields({
     inputMode,
     maxLength,
     sanitizeDigitsMax,
-    list,
   }: {
     suffix: string;
     label: string;
@@ -155,7 +153,6 @@ function PlayerFields({
     inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
     maxLength?: number;
     sanitizeDigitsMax?: number;
-    list?: string;
   }) => {
     const name = field_id(suffix) as FieldName;
     const message = field_error(name);
@@ -169,7 +166,6 @@ function PlayerFields({
           type={type}
           inputMode={inputMode}
           maxLength={maxLength}
-          list={list}
           {...field}
           onChange={(e) => {
             if (sanitizeDigitsMax) {
@@ -185,20 +181,18 @@ function PlayerFields({
     );
   };
 
-  const jersey_size_list_id = `${prefix}-jersey-size`;
-
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {render_text_field({ suffix: "EmployeeId", label: `${labelPrefix} Employee ID *` })}
         {render_text_field({ suffix: "Name", label: `${labelPrefix} Name *` })}
-        {render_text_field({ suffix: "Email", label: `${labelPrefix} Email *`, type: "email" })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {render_text_field({ suffix: "Dob", label: `${labelPrefix} DOB *`, type: "date" })}
+        {render_text_field({ suffix: "Email", label: `${labelPrefix} Email *`, type: "email" })}
         {render_text_field({
           suffix: "ContactNumber",
-          label: `${labelPrefix} Contact Number *`,
+          label: `${labelPrefix} Phone Number *`,
           inputMode: "numeric",
           maxLength: 10,
           sanitizeDigitsMax: 10,
@@ -206,57 +200,98 @@ function PlayerFields({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {render_text_field({
-          suffix: "WhatsAppNumber",
-          label: `${labelPrefix} WhatsApp Number *`,
-          inputMode: "numeric",
-          maxLength: 10,
-          sanitizeDigitsMax: 10,
-        })}
-        {render_text_field({ suffix: "EmployeeId", label: `${labelPrefix} Employee ID *` })}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {render_text_field({ suffix: "Dob", label: `${labelPrefix} Date of Birth *`, type: "date" })}
         {render_text_field({ suffix: "Address", label: `${labelPrefix} Address *` })}
-        {render_text_field({ suffix: "JerseyNumber", label: `${labelPrefix} Jersey Number *`, inputMode: "numeric" })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {render_text_field({ suffix: "JerseyName", label: `${labelPrefix} Jersey Name *` })}
+        {render_text_field({ suffix: "JerseyName", label: `${labelPrefix} Name on Jersey *` })}
         <div className="space-y-2">
           <Label htmlFor={`${prefix}JerseySize`}>{`${labelPrefix} Jersey Size *`}</Label>
-          <Input
+          <select
             id={`${prefix}JerseySize`}
-            list={jersey_size_list_id}
             {...register(`${prefix}JerseySize` as keyof TeamDetailsFormData)}
-            className={field_error(`${prefix}JerseySize` as FieldName) ? "border-red-500" : ""}
-          />
-          <datalist id={jersey_size_list_id}>
+            className={[
+              "flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+              field_error(`${prefix}JerseySize` as FieldName) ? "border-red-500" : "",
+            ].join(" ")}
+          >
+            <option value="">Select</option>
             {jersey_size_options.map((size) => (
-              <option key={size} value={size} />
+              <option key={size} value={size}>{size}</option>
             ))}
-          </datalist>
+          </select>
           {field_error(`${prefix}JerseySize` as FieldName) ? (
             <p className="text-red-500 text-sm">{field_error(`${prefix}JerseySize` as FieldName)}</p>
           ) : null}
         </div>
       </div>
+
+      {render_text_field({
+        suffix: "EmergencyContactNumber",
+        label: `${labelPrefix} Emergency Contact Number *`,
+        inputMode: "numeric",
+        maxLength: 10,
+        sanitizeDigitsMax: 10,
+      })}
     </div>
   );
 }
 
+type DraftV2 = {
+  kind: "team" | "individual";
+  details: Record<string, unknown>;
+  payment: { transactionId?: string; refundUpiId?: string };
+  createdAt: string;
+};
+
+const draft_storage_key_v2 = "cbl:registration:draft:v2";
+
+function try_parse_draft(value: string | null): DraftV2 | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<DraftV2> | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.kind !== "team" && parsed.kind !== "individual") return null;
+    if (!parsed.details || typeof parsed.details !== "object") return null;
+    const payment = parsed.payment && typeof parsed.payment === "object" ? parsed.payment : {};
+    return {
+      kind: parsed.kind,
+      details: parsed.details as Record<string, unknown>,
+      payment: { transactionId: payment.transactionId, refundUpiId: payment.refundUpiId },
+      createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function RegistrationPage() {
   const { toast } = useToast();
-  const router = useRouter();
+
   const [activeTab, setActiveTab] = useState<"team" | "individual">("team");
-  const [hasAccepted, setHasAccepted] = useState<boolean>(false);
-  const [isCheckingEmails, setIsCheckingEmails] = useState(false);
+  const [hasAccepted, setHasAccepted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [teamName, setTeamName] = useState("");
+
+  const [fileName, setFileName] = useState("");
+  const paymentProofInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [qrSrc, setQrSrc] = useState<string>("/assets/Team-2000.JPG");
 
   const teamForm = useForm<TeamDetailsFormData>({
     resolver: zodResolver(team_details_schema),
     mode: "onChange",
     reValidateMode: "onChange",
     shouldFocusError: false,
+    defaultValues: {
+      malePlayer1JerseySize: "" as (typeof jersey_size_options)[number],
+      malePlayer2JerseySize: "" as (typeof jersey_size_options)[number],
+      femalePlayer1JerseySize: "" as (typeof jersey_size_options)[number],
+      femalePlayer2JerseySize: "" as (typeof jersey_size_options)[number],
+    },
   });
 
   const individualForm = useForm<IndividualDetailsFormData>({
@@ -264,108 +299,252 @@ export default function RegistrationPage() {
     mode: "onChange",
     reValidateMode: "onChange",
     shouldFocusError: false,
+    defaultValues: {
+      gender: "" as "Male" | "Female" | "Other",
+      playerJerseySize: "" as (typeof jersey_size_options)[number],
+    },
   });
 
-  const reset_team_details = teamForm.reset;
-  const reset_individual_details = individualForm.reset;
+  const paymentForm = useForm<PaymentFormData>({
+    resolver: zodResolver(payment_schema),
+    mode: "onChange",
+    reValidateMode: "onChange",
+    shouldFocusError: false,
+  });
+
+  useEffect(() => {
+    setQrSrc(activeTab === "team" ? "/assets/Team-2000.JPG" : "/assets/Individual-500.JPG");
+  }, [activeTab]);
+
+  useEffect(() => {
+    const draft = try_parse_draft(window.sessionStorage.getItem(draft_storage_key_v2));
+    if (!draft) return;
+
+    setActiveTab(draft.kind);
+    if (draft.kind === "team") teamForm.reset(draft.details as TeamDetailsFormData);
+    else individualForm.reset(draft.details as IndividualDetailsFormData);
+
+    paymentForm.reset({
+      transactionId: draft.payment.transactionId ?? "",
+      refundUpiId: draft.payment.refundUpiId ?? "",
+      paymentProof: undefined,
+    });
+
+    setFileName("");
+    if (paymentProofInputRef.current) paymentProofInputRef.current.value = "";
+  }, [individualForm, paymentForm, teamForm]);
 
   const canProceed = useMemo(() => {
     return activeTab === "team" ? teamForm.formState.isValid : individualForm.formState.isValid;
   }, [activeTab, individualForm.formState.isValid, teamForm.formState.isValid]);
 
-  // Restore details when coming back from payment page.
-  // We keep the stored draft until final submission succeeds on payment page.
-  useEffect(() => {
+  const canSubmit = useMemo(() => {
+    return canProceed && paymentForm.formState.isValid && hasAccepted && !isSubmitting;
+  }, [canProceed, hasAccepted, isSubmitting, paymentForm.formState.isValid]);
+
+  const store_draft = (next: DraftV2) => {
     try {
-      const raw = window.sessionStorage.getItem("cbl:registration:draft");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { kind?: unknown; details?: unknown } | null;
-      if (!parsed || typeof parsed !== "object") return;
-
-      if (parsed.kind === "team" && parsed.details && typeof parsed.details === "object") {
-        setActiveTab("team");
-        reset_team_details(parsed.details as TeamDetailsFormData);
-        return;
-      }
-
-      if (parsed.kind === "individual" && parsed.details && typeof parsed.details === "object") {
-        setActiveTab("individual");
-        reset_individual_details(parsed.details as IndividualDetailsFormData);
-      }
+      window.sessionStorage.setItem(draft_storage_key_v2, JSON.stringify(next));
     } catch {
       // ignore
     }
-  }, [reset_individual_details, reset_team_details]);
+  };
 
-  const onNext = async () => {
-    const isValid = activeTab === "team" ? await teamForm.trigger() : await individualForm.trigger();
-    if (!isValid) {
+  useEffect(() => {
+    const subscription = teamForm.watch((value) => {
+      if (activeTab !== "team") return;
+      const payment = paymentForm.getValues();
+      store_draft({
+        kind: "team",
+        details: value as Record<string, unknown>,
+        payment: { transactionId: payment.transactionId, refundUpiId: payment.refundUpiId },
+        createdAt: new Date().toISOString(),
+      });
+    });
+    return () => subscription.unsubscribe();
+  }, [activeTab, paymentForm, teamForm]);
+
+  useEffect(() => {
+    const subscription = individualForm.watch((value) => {
+      if (activeTab !== "individual") return;
+      const payment = paymentForm.getValues();
+      store_draft({
+        kind: "individual",
+        details: value as Record<string, unknown>,
+        payment: { transactionId: payment.transactionId, refundUpiId: payment.refundUpiId },
+        createdAt: new Date().toISOString(),
+      });
+    });
+    return () => subscription.unsubscribe();
+  }, [activeTab, individualForm, paymentForm]);
+
+  useEffect(() => {
+    const subscription = paymentForm.watch((value) => {
+      const details =
+        activeTab === "team"
+          ? (teamForm.getValues() as Record<string, unknown>)
+          : (individualForm.getValues() as Record<string, unknown>);
+      store_draft({
+        kind: activeTab,
+        details,
+        payment: { transactionId: value.transactionId, refundUpiId: value.refundUpiId },
+        createdAt: new Date().toISOString(),
+      });
+    });
+    return () => subscription.unsubscribe();
+  }, [activeTab, individualForm, paymentForm, teamForm]);
+
+  const build_team_payload = ({
+    details,
+    payment,
+    paymentScreenshotBase64,
+  }: {
+    details: TeamDetailsFormData;
+    payment: PaymentFormData;
+    paymentScreenshotBase64: string;
+  }) => {
+    return {
+      registrationType: "team",
+
+      "Male Player 1 Employee ID": details.malePlayer1EmployeeId,
+      "Male Player 1 Name": details.malePlayer1Name,
+      "Male Player 1 Email": details.malePlayer1Email,
+      "Male Player 1 DOB": details.malePlayer1Dob,
+      "Male Player 1 Contact Number": details.malePlayer1ContactNumber,
+      "Male Player 1 Address": details.malePlayer1Address,
+      "Male Player 1 Jersey Name": details.malePlayer1JerseyName,
+      "Male Player 1 Jersey Size": details.malePlayer1JerseySize,
+      "Male Player 1 Emergency Contact Number": details.malePlayer1EmergencyContactNumber,
+
+      "Male Player 2 Employee ID": details.malePlayer2EmployeeId,
+      "Male Player 2 Name": details.malePlayer2Name,
+      "Male Player 2 Email": details.malePlayer2Email,
+      "Male Player 2 DOB": details.malePlayer2Dob,
+      "Male Player 2 Contact Number": details.malePlayer2ContactNumber,
+      "Male Player 2 Address": details.malePlayer2Address,
+      "Male Player 2 Jersey Name": details.malePlayer2JerseyName,
+      "Male Player 2 Jersey Size": details.malePlayer2JerseySize,
+      "Male Player 2 Emergency Contact Number": details.malePlayer2EmergencyContactNumber,
+
+      "Female Player 1 Employee ID": details.femalePlayer1EmployeeId,
+      "Female Player 1 Name": details.femalePlayer1Name,
+      "Female Player 1 Email": details.femalePlayer1Email,
+      "Female Player 1 DOB": details.femalePlayer1Dob,
+      "Female Player 1 Contact Number": details.femalePlayer1ContactNumber,
+      "Female Player 1 Address": details.femalePlayer1Address,
+      "Female Player 1 Jersey Name": details.femalePlayer1JerseyName,
+      "Female Player 1 Jersey Size": details.femalePlayer1JerseySize,
+      "Female Player 1 Emergency Contact Number": details.femalePlayer1EmergencyContactNumber,
+
+      "Female Player 2 Employee ID": details.femalePlayer2EmployeeId,
+      "Female Player 2 Name": details.femalePlayer2Name,
+      "Female Player 2 Email": details.femalePlayer2Email,
+      "Female Player 2 DOB": details.femalePlayer2Dob,
+      "Female Player 2 Contact Number": details.femalePlayer2ContactNumber,
+      "Female Player 2 Address": details.femalePlayer2Address,
+      "Female Player 2 Jersey Name": details.femalePlayer2JerseyName,
+      "Female Player 2 Jersey Size": details.femalePlayer2JerseySize,
+      "Female Player 2 Emergency Contact Number": details.femalePlayer2EmergencyContactNumber,
+
+      "Transaction ID": payment.transactionId,
+      "Refund UPI ID": payment.refundUpiId,
+      paymentScreenshotBase64,
+    } satisfies Record<string, string>;
+  };
+
+  const build_individual_payload = ({
+    details,
+    payment,
+    paymentScreenshotBase64,
+  }: {
+    details: IndividualDetailsFormData;
+    payment: PaymentFormData;
+    paymentScreenshotBase64: string;
+  }) => {
+    return {
+      registrationType: "individual",
+      "Player Employee ID": details.playerEmployeeId,
+      "Player Name": details.playerName,
+      "Player Email": details.playerEmail,
+      "Player DOB": details.playerDob,
+      "Player Contact Number": details.playerContactNumber,
+      "Player Address": details.playerAddress,
+      "Player Jersey Name": details.playerJerseyName,
+      "Player Jersey Size": details.playerJerseySize,
+      "Player Gender": details.gender,
+      "Transaction ID": payment.transactionId,
+      "Emergency contact number": details.playerEmergencyContactNumber,
+      "Refund UPI ID": payment.refundUpiId,
+      paymentScreenshotBase64,
+    } satisfies Record<string, string>;
+  };
+
+  const onSubmit = async () => {
+    const details_valid = activeTab === "team" ? await teamForm.trigger() : await individualForm.trigger();
+    const payment_valid = await paymentForm.trigger();
+    if (!details_valid || !payment_valid) {
       toast({
-        title: "Please fill all required fields",
-        description: "Complete the form to continue to payment.",
+        title: "Please fix form errors",
+        description: "Complete all required fields to submit registration.",
         variant: "destructive",
       });
       return;
     }
 
-    const emails_to_check =
-      activeTab === "team"
-        ? [
-            teamForm.getValues("malePlayer1Email"),
-            teamForm.getValues("malePlayer2Email"),
-            teamForm.getValues("femalePlayer1Email"),
-            teamForm.getValues("femalePlayer2Email"),
-          ]
-        : [individualForm.getValues("playerEmail")];
+    if (!hasAccepted) {
+      toast({
+        title: "Please accept the disclaimer",
+        description: "You must accept the T&C to submit registration.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setIsCheckingEmails(true);
+    setIsSubmitting(true);
     try {
-      const { conflicts } = await validateEmailsBeforePayment({ emails: emails_to_check });
-      const conflict_set = new Set((conflicts ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean));
+      const payment = paymentForm.getValues();
+      const file = payment.paymentProof?.[0];
+      const paymentScreenshotBase64 = await convertFileToBase64(file);
 
-      if (conflict_set.size > 0) {
-        if (activeTab === "team") {
-          (["malePlayer1Email", "malePlayer2Email", "femalePlayer1Email", "femalePlayer2Email"] as const).forEach((field) => {
-            const value = (teamForm.getValues(field) ?? "").trim().toLowerCase();
-            if (!value) return;
-            if (!conflict_set.has(value)) return;
-            teamForm.setError(field, { type: "validate", message: "Email already registered" });
-          });
-        } else {
-          const value = (individualForm.getValues("playerEmail") ?? "").trim().toLowerCase();
-          if (value && conflict_set.has(value)) individualForm.setError("playerEmail", { type: "validate", message: "Email already registered" });
+      const response =
+        activeTab === "team"
+          ? await registerTeam(build_team_payload({ details: teamForm.getValues(), payment, paymentScreenshotBase64 }))
+          : await registerIndividual(build_individual_payload({ details: individualForm.getValues(), payment, paymentScreenshotBase64 }));
+
+      if (response.success) {
+        const maybe_team_name = response?.data?.teamName;
+        if (typeof maybe_team_name === "string" && maybe_team_name) {
+          setTeamName(maybe_team_name);
+          setModalOpen(true);
         }
 
+        // Clear draft before reset so watch subscriptions don't write it back.
+        try { window.sessionStorage.removeItem(draft_storage_key_v2); } catch { /* ignore */ }
+
+        teamForm.reset();
+        individualForm.reset();
+        paymentForm.reset();
+        setHasAccepted(false);
+        setFileName("");
+        if (paymentProofInputRef.current) paymentProofInputRef.current.value = "";
+
+        toast({ title: "Success!", description: response.message });
+      } else {
         toast({
-          title: "Email already registered",
-          description: "Please use a different email to continue.",
+          title: "Registration Failed",
+          description: response.message || "Something went wrong. Please try again.",
           variant: "destructive",
         });
-        return;
       }
-    } catch (err) {
+    } catch (error) {
       toast({
-        title: "Validation failed",
-        description: err instanceof Error ? err.message : "Failed to validate emails. Please try again.",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to register. Please try again.",
         variant: "destructive",
       });
-      return;
     } finally {
-      setIsCheckingEmails(false);
+      setIsSubmitting(false);
     }
-
-    const draft =
-      activeTab === "team"
-        ? { kind: "team" as const, details: teamForm.getValues(), createdAt: new Date().toISOString() }
-        : { kind: "individual" as const, details: individualForm.getValues(), createdAt: new Date().toISOString() };
-
-    try {
-      window.sessionStorage.setItem("cbl:registration:draft", JSON.stringify(draft));
-    } catch {
-      // ignore storage errors
-    }
-
-    router.push("/registration/payment");
   };
 
   return (
@@ -377,47 +556,43 @@ export default function RegistrationPage() {
         className="w-full"
       >
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold neon-text mb-4">Registration</h1>
-          <p className="text-gray-400">Fill player details first, then proceed to payment.</p>
+          <h1 className="text-4xl md:text-5xl pb-2 font-bold neon-text mb-4">Registration</h1>
+          <p className="text-gray-400">Fill player and payment details to complete registration.</p>
         </div>
 
         <div className="mb-8 overflow-x-auto">
           <div className="flex justify-center min-w-full">
             <div className="inline-flex gap-2 rounded-2xl border border-border bg-white/70 p-2 backdrop-blur-md w-fit">
-            <button
-              type="button"
-              onClick={() => setActiveTab("team")}
-              className={[
-                "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors",
-                activeTab === "team"
-                  ? "bg-neon-blue text-white"
-                  : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900",
-              ].join(" ")}
-            >
-              Team registration
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("individual")}
-              className={[
-                "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors",
-                activeTab === "individual"
-                  ? "bg-neon-blue text-white"
-                  : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900",
-              ].join(" ")}
-            >
-              Individual registration
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("team")}
+                className={[
+                  "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors",
+                  activeTab === "team"
+                    ? "bg-neon-blue text-white"
+                    : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900",
+                ].join(" ")}
+              >
+                Team registration
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("individual")}
+                className={[
+                  "px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors",
+                  activeTab === "individual"
+                    ? "bg-neon-blue text-white"
+                    : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900",
+                ].join(" ")}
+              >
+                Individual registration
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-3">
-            <CblGuidelines />
-          </div>
-
-          <div className="lg:col-span-6">
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
+          <div className="w-full lg:w-[70%]">
             {activeTab === "team" ? (
               <div className="space-y-8">
                 <motion.div
@@ -475,227 +650,351 @@ export default function RegistrationPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
               >
-                <h2 className="text-2xl font-bold mb-6 text-neon-blue">Player Details</h2>
+                <h2 className="text-2xl font-bold mb-6 text-neon-blue">Individual Player Details</h2>
 
                 <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="playerName">Name *</Label>
-                  <Input
-                    id="playerName"
-                    {...individualForm.register("playerName")}
-                    className={individualForm.formState.errors.playerName ? "border-red-500" : ""}
-                  />
-                  {individualForm.formState.errors.playerName ? (
-                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerName.message}</p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="playerEmail">Email *</Label>
-                  <Input
-                    id="playerEmail"
-                    type="email"
-                    {...individualForm.register("playerEmail")}
-                    className={individualForm.formState.errors.playerEmail ? "border-red-500" : ""}
-                  />
-                  {individualForm.formState.errors.playerEmail ? (
-                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerEmail.message}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="playerDob">DOB *</Label>
-                  <Input
-                    id="playerDob"
-                    type="date"
-                    {...individualForm.register("playerDob")}
-                    className={individualForm.formState.errors.playerDob ? "border-red-500" : ""}
-                  />
-                  {individualForm.formState.errors.playerDob ? (
-                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerDob.message}</p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender *</Label>
-                  <Input
-                    id="gender"
-                    list="gender-options"
-                    {...individualForm.register("gender")}
-                    className={individualForm.formState.errors.gender ? "border-red-500" : ""}
-                  />
-                  <datalist id="gender-options">
-                    <option value="Male" />
-                    <option value="Female" />
-                    <option value="Other" />
-                  </datalist>
-                  {individualForm.formState.errors.gender ? (
-                    <p className="text-red-500 text-sm">{individualForm.formState.errors.gender.message}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {(() => {
-                  const field = individualForm.register("playerContactNumber");
-                  return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="playerContactNumber">Contact Number *</Label>
+                      <Label htmlFor="playerEmployeeId">Employee ID *</Label>
                       <Input
-                        id="playerContactNumber"
-                        inputMode="numeric"
-                        maxLength={10}
-                        {...field}
-                        onChange={(e) => {
-                          const digits_only = e.target.value.replace(/\\D/g, "");
-                          e.target.value = digits_only.slice(0, 10);
-                          field.onChange(e);
-                        }}
-                        className={individualForm.formState.errors.playerContactNumber ? "border-red-500" : ""}
+                        id="playerEmployeeId"
+                        {...individualForm.register("playerEmployeeId")}
+                        className={individualForm.formState.errors.playerEmployeeId ? "border-red-500" : ""}
                       />
+                      {individualForm.formState.errors.playerEmployeeId ? (
+                        <p className="text-red-500 text-sm">
+                          {individualForm.formState.errors.playerEmployeeId.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="playerName">Name *</Label>
+                      <Input
+                        id="playerName"
+                        {...individualForm.register("playerName")}
+                        className={individualForm.formState.errors.playerName ? "border-red-500" : ""}
+                      />
+                      {individualForm.formState.errors.playerName ? (
+                        <p className="text-red-500 text-sm">{individualForm.formState.errors.playerName.message}</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="playerEmail">Email *</Label>
+                      <Input
+                        id="playerEmail"
+                        type="email"
+                        {...individualForm.register("playerEmail")}
+                        className={individualForm.formState.errors.playerEmail ? "border-red-500" : ""}
+                      />
+                      {individualForm.formState.errors.playerEmail ? (
+                        <p className="text-red-500 text-sm">{individualForm.formState.errors.playerEmail.message}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="playerContactNumber">Phone Number *</Label>
+                      {(() => {
+                        const field = individualForm.register("playerContactNumber");
+                        return (
+                          <Input
+                            id="playerContactNumber"
+                            inputMode="numeric"
+                            maxLength={10}
+                            {...field}
+                            onChange={(e) => {
+                              const digits_only = e.target.value.replace(/\D/g, "");
+                              e.target.value = digits_only.slice(0, 10);
+                              field.onChange(e);
+                            }}
+                            className={individualForm.formState.errors.playerContactNumber ? "border-red-500" : ""}
+                          />
+                        );
+                      })()}
                       {individualForm.formState.errors.playerContactNumber ? (
                         <p className="text-red-500 text-sm">
                           {individualForm.formState.errors.playerContactNumber.message}
                         </p>
                       ) : null}
                     </div>
-                  );
-                })()}
+                  </div>
 
-                {(() => {
-                  const field = individualForm.register("playerWhatsAppNumber");
-                  return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="playerWhatsAppNumber">WhatsApp Number *</Label>
+                      <Label htmlFor="playerDob">Date of Birth *</Label>
                       <Input
-                        id="playerWhatsAppNumber"
-                        inputMode="numeric"
-                        maxLength={10}
-                        {...field}
-                        onChange={(e) => {
-                          const digits_only = e.target.value.replace(/\\D/g, "");
-                          e.target.value = digits_only.slice(0, 10);
-                          field.onChange(e);
-                        }}
-                        className={individualForm.formState.errors.playerWhatsAppNumber ? "border-red-500" : ""}
+                        id="playerDob"
+                        type="date"
+                        {...individualForm.register("playerDob")}
+                        className={individualForm.formState.errors.playerDob ? "border-red-500" : ""}
                       />
-                      {individualForm.formState.errors.playerWhatsAppNumber ? (
+                      {individualForm.formState.errors.playerDob ? (
+                        <p className="text-red-500 text-sm">{individualForm.formState.errors.playerDob.message}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="playerAddress">Address *</Label>
+                      <Input
+                        id="playerAddress"
+                        {...individualForm.register("playerAddress")}
+                        className={individualForm.formState.errors.playerAddress ? "border-red-500" : ""}
+                      />
+                      {individualForm.formState.errors.playerAddress ? (
+                        <p className="text-red-500 text-sm">{individualForm.formState.errors.playerAddress.message}</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="playerJerseyName">Name on Jersey *</Label>
+                      <Input
+                        id="playerJerseyName"
+                        {...individualForm.register("playerJerseyName")}
+                        className={individualForm.formState.errors.playerJerseyName ? "border-red-500" : ""}
+                      />
+                      {individualForm.formState.errors.playerJerseyName ? (
+                        <p className="text-red-500 text-sm">{individualForm.formState.errors.playerJerseyName.message}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="playerJerseySize">Jersey Size *</Label>
+                      <select
+                        id="playerJerseySize"
+                        {...individualForm.register("playerJerseySize")}
+                        className={[
+                          "flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                          individualForm.formState.errors.playerJerseySize ? "border-red-500" : "",
+                        ].join(" ")}
+                      >
+                        <option value="">Select</option>
+                        {jersey_size_options.map((size) => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </select>
+                      {individualForm.formState.errors.playerJerseySize ? (
+                        <p className="text-red-500 text-sm">{individualForm.formState.errors.playerJerseySize.message}</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="playerEmergencyContactNumber">Emergency Contact Number *</Label>
+                      {(() => {
+                        const field = individualForm.register("playerEmergencyContactNumber");
+                        return (
+                          <Input
+                            id="playerEmergencyContactNumber"
+                            inputMode="numeric"
+                            maxLength={10}
+                            {...field}
+                            onChange={(e) => {
+                              const digits_only = e.target.value.replace(/\D/g, "");
+                              e.target.value = digits_only.slice(0, 10);
+                              field.onChange(e);
+                            }}
+                            className={
+                              individualForm.formState.errors.playerEmergencyContactNumber ? "border-red-500" : ""
+                            }
+                          />
+                        );
+                      })()}
+                      {individualForm.formState.errors.playerEmergencyContactNumber ? (
                         <p className="text-red-500 text-sm">
-                          {individualForm.formState.errors.playerWhatsAppNumber.message}
+                          {individualForm.formState.errors.playerEmergencyContactNumber.message}
                         </p>
                       ) : null}
                     </div>
-                  );
-                })()}
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="playerEmployeeId">Employee ID *</Label>
-                  <Input
-                    id="playerEmployeeId"
-                    {...individualForm.register("playerEmployeeId")}
-                    className={individualForm.formState.errors.playerEmployeeId ? "border-red-500" : ""}
-                  />
-                  {individualForm.formState.errors.playerEmployeeId ? (
-                    <p className="text-red-500 text-sm">
-                      {individualForm.formState.errors.playerEmployeeId.message}
-                    </p>
-                  ) : null}
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">Gender *</Label>
+                      <select
+                        id="gender"
+                        {...individualForm.register("gender")}
+                        className={[
+                          "flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                          individualForm.formState.errors.gender ? "border-red-500" : "",
+                        ].join(" ")}
+                      >
+                        <option value="">Select</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      {individualForm.formState.errors.gender ? (
+                        <p className="text-red-500 text-sm">{individualForm.formState.errors.gender.message}</p>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="playerAddress">Address *</Label>
-                  <Input
-                    id="playerAddress"
-                    {...individualForm.register("playerAddress")}
-                    className={individualForm.formState.errors.playerAddress ? "border-red-500" : ""}
-                  />
-                  {individualForm.formState.errors.playerAddress ? (
-                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerAddress.message}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="playerJerseyNumber">Jersey Number *</Label>
-                  <Input
-                    id="playerJerseyNumber"
-                    inputMode="numeric"
-                    {...individualForm.register("playerJerseyNumber")}
-                    className={individualForm.formState.errors.playerJerseyNumber ? "border-red-500" : ""}
-                  />
-                  {individualForm.formState.errors.playerJerseyNumber ? (
-                    <p className="text-red-500 text-sm">
-                      {individualForm.formState.errors.playerJerseyNumber.message}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="playerJerseyName">Jersey Name *</Label>
-                  <Input
-                    id="playerJerseyName"
-                    {...individualForm.register("playerJerseyName")}
-                    className={individualForm.formState.errors.playerJerseyName ? "border-red-500" : ""}
-                  />
-                  {individualForm.formState.errors.playerJerseyName ? (
-                    <p className="text-red-500 text-sm">{individualForm.formState.errors.playerJerseyName.message}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="playerJerseySize">Jersey Size *</Label>
-                <Input
-                  id="playerJerseySize"
-                  list="individual-jersey-sizes"
-                  {...individualForm.register("playerJerseySize")}
-                  className={individualForm.formState.errors.playerJerseySize ? "border-red-500" : ""}
-                />
-                <datalist id="individual-jersey-sizes">
-                  {jersey_size_options.map((size) => (
-                    <option key={size} value={size} />
-                  ))}
-                </datalist>
-                {individualForm.formState.errors.playerJerseySize ? (
-                  <p className="text-red-500 text-sm">{individualForm.formState.errors.playerJerseySize.message}</p>
-                ) : null}
-              </div>
-            </div>
               </motion.div>
             )}
 
-            <div className="flex flex-col items-center mt-10">
+            <motion.div
+              className="glass rounded-xl p-6 md:p-8 mt-8"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <h2 className="text-2xl font-bold mb-6 text-neon-blue">Payment Details</h2>
+
+              <div className="flex flex-col items-center space-y-4 mb-6">
+                <div className="glass rounded-lg p-6 text-center w-full">
+                  <div className="w-48 h-48 bg-white rounded-lg border border-border mb-4 overflow-hidden relative mx-auto">
+                    <Image
+                      src={qrSrc}
+                      alt="Payment QR Code"
+                      fill
+                      sizes="192px"
+                      className="object-contain p-2"
+                      onError={(e) => {
+                        if (qrSrc !== "/assets/qr-code.png") setQrSrc("/assets/qr-code.png");
+                        else e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    {activeTab === "team"
+                      ? "Scan to pay ₹2000 team registration fee"
+                      : "Scan to pay ₹500 individual registration fee"}
+                  </p>
+                  <p className="text-neon-blue font-mono mt-2">UPI: 9971461729@goaxb</p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="transactionId">Transaction ID *</Label>
+                  <Input
+                    id="transactionId"
+                    {...paymentForm.register("transactionId")}
+                    className={paymentForm.formState.errors.transactionId ? "border-red-500" : ""}
+                  />
+                  {paymentForm.formState.errors.transactionId ? (
+                    <p className="text-red-500 text-sm">{paymentForm.formState.errors.transactionId.message}</p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="refundUpiId">Refund UPI ID *</Label>
+                  <Input
+                    id="refundUpiId"
+                    {...paymentForm.register("refundUpiId")}
+                    className={paymentForm.formState.errors.refundUpiId ? "border-red-500" : ""}
+                  />
+                  {paymentForm.formState.errors.refundUpiId ? (
+                    <p className="text-red-500 text-sm">{paymentForm.formState.errors.refundUpiId.message}</p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="paymentProof">Payment Screenshot (PNG, JPG, JPEG) *</Label>
+                  <div className="space-y-3">
+                    {(() => {
+                      const reg = paymentForm.register("paymentProof");
+                      return (
+                        <>
+                          <Input
+                            id="paymentProof"
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg"
+                            className="sr-only"
+                            {...reg}
+                            ref={(el) => {
+                              reg.ref(el);
+                              paymentProofInputRef.current = el;
+                            }}
+                            onChange={(e) => {
+                              reg.onChange(e);
+                              const file = e.target.files?.[0];
+                              setFileName(file ? file.name : "");
+                            }}
+                          />
+
+                          <div className="flex">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={paymentForm.formState.errors.paymentProof ? "border-red-500" : ""}
+                              onClick={() => paymentProofInputRef.current?.click()}
+                            >
+                              Choose file
+                            </Button>
+                          </div>
+
+                          {fileName ? (
+                            <div className="flex items-center gap-3">
+                              <div className="inline-flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1 max-w-full">
+                                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                <span className="truncate max-w-[240px]">{fileName}</span>
+                              </div>
+
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
+                                onClick={() => {
+                                  setFileName("");
+                                  paymentForm.resetField("paymentProof");
+                                  if (paymentProofInputRef.current) paymentProofInputRef.current.value = "";
+                                }}
+                              >
+                                <X className="w-4 h-4" />
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-500">No file selected</p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                  {paymentForm.formState.errors.paymentProof ? (
+                    <p className="text-red-500 text-sm">{paymentForm.formState.errors.paymentProof.message as string}</p>
+                  ) : null}
+                </div>
+              </div>
+            </motion.div>
+
+            <div className="mt-8">
+              <CblDisclaimer accepted={hasAccepted} onAcceptedChange={setHasAccepted} />
+            </div>
+
+            <div className="flex flex-col items-center mt-8">
               <Button
                 type="button"
-                onClick={onNext}
-                disabled={!canProceed || isCheckingEmails}
+                onClick={onSubmit}
+                disabled={!canSubmit}
                 variant="neon"
                 size="lg"
-                className="w-full md:w-auto min-w-[200px]"
+                className="w-full md:w-auto min-w-[220px]"
               >
-                {isCheckingEmails ? (
+                {isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Next
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Submit registration
                   </>
                 ) : (
-                  "Next"
+                  "Submit registration"
                 )}
               </Button>
+              <p className="text-xs text-slate-500 mt-2">Please accept the T&amp;C before submitting</p>
             </div>
           </div>
 
-          <div className="lg:col-span-3">
-            <CblDisclaimer accepted={hasAccepted} onAcceptedChange={setHasAccepted} />
+          <div className="w-full lg:w-[30%] lg:sticky lg:top-24">
+            <CblGuidelines />
           </div>
         </div>
       </motion.div>
+
+      <TeamRevealModal isOpen={modalOpen} onClose={() => setModalOpen(false)} teamName={teamName} />
     </div>
   );
 }

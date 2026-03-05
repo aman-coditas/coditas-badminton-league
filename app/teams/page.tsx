@@ -69,7 +69,7 @@ export default function TeamsPage() {
         transition={{ duration: 0.6 }}
       >
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold neon-text mb-4">
+          <h1 className="text-4xl md:text-5xl pb-2 font-bold neon-text mb-4">
             Registrations
           </h1>
           <p className="text-gray-400">
