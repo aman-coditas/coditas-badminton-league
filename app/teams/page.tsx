@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import TeamCard from "@/components/TeamCard";
 import { fetchIndividuals, fetchTeams, type IndividualPlayer, type Team } from "@/lib/api";
-import { Loader2, AlertCircle, Mail, User } from "lucide-react";
+import { Loader2, AlertCircle, ChevronUp, ChevronDown, Search } from "lucide-react";
+
+type SortColumn = "name" | "gender" | null;
+type SortDirection = "asc" | "desc";
 
 export default function TeamsPage() {
   const [activeTab, setActiveTab] = useState<"teams" | "individuals">("teams");
@@ -18,6 +21,57 @@ export default function TeamsPage() {
   const [individualsLoading, setIndividualsLoading] = useState(false);
   const [individualsError, setIndividualsError] = useState<string | null>(null);
   const [hasLoadedIndividuals, setHasLoadedIndividuals] = useState(false);
+
+  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      if (sortDirection === "asc") {
+        setSortDirection("desc");
+      } else {
+        // Reset to default (no sorting)
+        setSortColumn(null);
+        setSortDirection("asc");
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  const filteredAndSortedIndividuals = useMemo(() => {
+    let result = individuals;
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter((p) => p.name?.toLowerCase().includes(query));
+    }
+
+    // Sort if column selected
+    if (sortColumn) {
+      result = [...result].sort((a, b) => {
+        let aVal = "";
+        let bVal = "";
+
+        if (sortColumn === "name") {
+          aVal = a.name?.toLowerCase() || "";
+          bVal = b.name?.toLowerCase() || "";
+        } else if (sortColumn === "gender") {
+          aVal = a.gender?.toLowerCase() || "";
+          bVal = b.gender?.toLowerCase() || "";
+        }
+
+        if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [individuals, sortColumn, sortDirection, searchQuery]);
 
   const loadTeams = useCallback(async () => {
     try {
@@ -194,62 +248,101 @@ export default function TeamsPage() {
               </div>
             </div>
 
+            <div className="mb-4 max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-white/70 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-neon-blue/50 focus:border-neon-blue transition-colors"
+                />
+              </div>
+            </div>
+
             <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              initial="hidden"
-              animate="visible"
-              variants={{
-                visible: {
-                  transition: {
-                    staggerChildren: 0.1,
-                  },
-                },
-              }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass rounded-xl overflow-hidden"
             >
-              {individuals.map((p, index) => (
-                <motion.div
-                  key={`${p.email}-${index}`}
-                  variants={{
-                    hidden: { opacity: 0, y: 20 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <div className="glass rounded-xl overflow-hidden glass-hover">
-                    <div className="p-6">
-                      <div className="flex items-center gap-3 mb-2">
-                        <User className="w-6 h-6 text-neon-blue" />
-                        <h3 className="text-xl font-bold">{p.name}</h3>
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div className="flex items-start gap-2">
-                          <Mail className="w-4 h-4 text-gray-400 mt-1" />
-                          <div>
-                            <p className="text-xs text-gray-400">Email</p>
-                            <p className="text-sm text-slate-900">
-                              {p.email}
-                              {p.contactNumber ? (
-                                <>
-                                  {" "}
-                                  <span className="text-slate-400">•</span> {p.contactNumber}
-                                </>
-                              ) : null}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-lg border border-border bg-white/70 p-3">
-                            <p className="text-xs text-gray-400">Gender</p>
-                            <p className="text-sm font-semibold text-slate-900">{p.gender}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-white/50">
+                      <th className="py-4 px-4 text-left font-semibold text-slate-700">#</th>
+                      <th
+                        className="py-4 px-4 text-left font-semibold text-slate-700 cursor-pointer hover:text-neon-blue transition-colors select-none"
+                        onClick={() => handleSort("name")}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          Name
+                          {sortColumn === "name" ? (
+                            sortDirection === "asc" ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )
+                          ) : (
+                            <span className="w-4 h-4 opacity-30 inline-flex flex-col">
+                              <ChevronUp className="w-4 h-2 -mb-1" />
+                              <ChevronDown className="w-4 h-2" />
+                            </span>
+                          )}
+                        </span>
+                      </th>
+                      <th className="py-4 px-4 text-left font-semibold text-slate-700">Email</th>
+                      <th className="py-4 px-4 text-left font-semibold text-slate-700">Contact</th>
+                      <th
+                        className="py-4 px-4 text-left font-semibold text-slate-700 cursor-pointer hover:text-neon-blue transition-colors select-none"
+                        onClick={() => handleSort("gender")}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          Gender
+                          {sortColumn === "gender" ? (
+                            sortDirection === "asc" ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )
+                          ) : (
+                            <span className="w-4 h-4 opacity-30 inline-flex flex-col">
+                              <ChevronUp className="w-4 h-2 -mb-1" />
+                              <ChevronDown className="w-4 h-2" />
+                            </span>
+                          )}
+                        </span>
+                      </th>
+                      <th className="py-4 px-4 text-left font-semibold text-slate-700">Jersey Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAndSortedIndividuals.map((p, index) => (
+                      <tr
+                        key={`${p.email}-${index}`}
+                        className="border-b border-border/60 hover:bg-white/40 transition-colors"
+                      >
+                        <td className="py-3 px-4 text-slate-500">{index + 1}</td>
+                        <td className="py-3 px-4 font-medium text-slate-900">{p.name}</td>
+                        <td className="py-3 px-4 text-slate-700">{p.email}</td>
+                        <td className="py-3 px-4 text-slate-700">{p.contactNumber || "-"}</td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                            p.gender === "Male"
+                              ? "bg-blue-100 text-blue-700"
+                              : p.gender === "Female"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-gray-100 text-gray-700"
+                          }`}>
+                            {p.gender}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-700">{p.jerseyName || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </motion.div>
           </>
         )}

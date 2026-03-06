@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentType, ReactNode } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { AlertCircle, Calendar, Check, Clock, MapPin, Target, Users } from "lucide-react";
 
@@ -50,6 +51,12 @@ const SHUTTLES = [
   { top: "63%", left: "89%", size: 62, rotate: 20,  delay: 0.8, duration: 11, color: "#9900E6", opacity: 0.09 },
   { top: "80%", left: "43%", size: 50, rotate: -30, delay: 3.5, duration: 7,  color: "#11CAE6", opacity: 0.09 },
   { top: "36%", left: "93%", size: 40, rotate: 55,  delay: 1.8, duration: 12, color: "#5B0FFE", opacity: 0.08 },
+  { top: "15%", left: "45%", size: 48, rotate: 12,  delay: 0.5, duration: 9,  color: "#9900E6", opacity: 0.10 },
+  { top: "28%", left: "12%", size: 54, rotate: -25, delay: 2.0, duration: 11, color: "#11CAE6", opacity: 0.09 },
+  { top: "45%", left: "75%", size: 44, rotate: 40,  delay: 1.5, duration: 8,  color: "#5B0FFE", opacity: 0.11 },
+  { top: "72%", left: "18%", size: 58, rotate: -10, delay: 3.0, duration: 10, color: "#9900E6", opacity: 0.10 },
+  { top: "88%", left: "72%", size: 52, rotate: 25,  delay: 0.3, duration: 9,  color: "#11CAE6", opacity: 0.08 },
+  { top: "38%", left: "55%", size: 42, rotate: -35, delay: 2.8, duration: 12, color: "#5B0FFE", opacity: 0.09 },
 ];
 
 function RacketSvg({ color, clipId }: { color: string; clipId: string }) {
@@ -96,12 +103,18 @@ const RACKETS = [
   { top: "68%", left: "5%",  size: 58, rotate: -22, delay: 2.3, duration: 11, color: "#5B0FFE", opacity: 0.10 },
   { top: "12%", left: "79%", size: 46, rotate: 42,  delay: 1.4, duration: 8,  color: "#9900E6", opacity: 0.11 },
   { top: "82%", left: "78%", size: 50, rotate: -18, delay: 3.1, duration: 10, color: "#11CAE6", opacity: 0.10 },
+  { top: "5%",  left: "25%", size: 44, rotate: 15,  delay: 0.9, duration: 10, color: "#5B0FFE", opacity: 0.09 },
+  { top: "32%", left: "88%", size: 54, rotate: -35, delay: 1.8, duration: 9,  color: "#9900E6", opacity: 0.10 },
+  { top: "55%", left: "42%", size: 48, rotate: 50,  delay: 2.6, duration: 11, color: "#11CAE6", opacity: 0.08 },
+  { top: "75%", left: "28%", size: 56, rotate: -8,  delay: 0.4, duration: 8,  color: "#5B0FFE", opacity: 0.11 },
+  { top: "48%", left: "8%",  size: 42, rotate: 32,  delay: 3.4, duration: 12, color: "#9900E6", opacity: 0.09 },
+  { top: "90%", left: "55%", size: 50, rotate: -28, delay: 1.1, duration: 10, color: "#11CAE6", opacity: 0.10 },
 ];
 
 export default function OverviewPage() {
 
   return (
-    <div className="container mx-auto px-4 py-12 md:py-20">
+    <div className="container mx-auto px-4 py-6 md:py-10">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -136,6 +149,21 @@ export default function OverviewPage() {
         </div>
 
         <div className="text-center space-y-6 mb-16">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+            className="flex justify-center"
+          >
+            <Image
+              src="/assets/cbl-symbol.png"
+              alt="CBL Tournament Symbol"
+              width={160}
+              height={200}
+              className="h-32 md:h-40 w-auto object-contain"
+              priority
+            />
+          </motion.div>
           <motion.h1
             className="text-5xl md:text-7xl font-bold neon-text"
             initial={{ opacity: 0, y: -20 }}

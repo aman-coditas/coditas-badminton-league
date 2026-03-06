@@ -210,7 +210,7 @@ export default function RegistrationPaymentPage() {
         }
         reset();
         setFileName("");
-        toast({ title: "Success!", description: response.message });
+        toast({ title: "Success!", description: response.message, variant: "success" });
         try {
           window.sessionStorage.removeItem("cbl:registration:draft");
         } catch {

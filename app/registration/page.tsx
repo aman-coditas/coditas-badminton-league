@@ -578,7 +578,7 @@ export default function RegistrationPage() {
         if (paymentProofInputRef.current) paymentProofInputRef.current.value = "";
         setFormKey((k) => k + 1);
 
-        toast({ title: "Success!", description: response.message });
+        toast({ title: "Success!", description: response.message, variant: "success" });
       } else {
         toast({
           title: "Registration Failed",
