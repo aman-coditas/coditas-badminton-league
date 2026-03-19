@@ -34,12 +34,17 @@ export async function GET() {
     );
   }
 
-  // Generate a random state for CSRF protection
-  const state = crypto.randomUUID();
-
   // Generate PKCE code verifier and challenge
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+  // Encode state with code verifier (to avoid cookie issues in serverless)
+  // Format: base64(JSON({ nonce, verifier }))
+  const stateData = {
+    nonce: crypto.randomUUID(),
+    verifier: codeVerifier,
+  };
+  const state = btoa(JSON.stringify(stateData));
 
   // Build the authorization URL
   const params = new URLSearchParams({
@@ -54,28 +59,5 @@ export async function GET() {
 
   const authorizationUrl = `${authUrl}?${params.toString()}`;
 
-  // Create response with redirect
-  const response = NextResponse.redirect(authorizationUrl);
-
-  // Store state and code verifier in cookies for verification in callback
-  // Use sameSite: "none" with secure: true for cross-origin OAuth redirects
-  const isProduction = process.env.NODE_ENV === "production";
-
-  response.cookies.set("oauth_state", state, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
-    maxAge: 60 * 10, // 10 minutes
-    path: "/",
-  });
-
-  response.cookies.set("oauth_code_verifier", codeVerifier, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
-    maxAge: 60 * 10, // 10 minutes
-    path: "/",
-  });
-
-  return response;
+  return NextResponse.redirect(authorizationUrl);
 }

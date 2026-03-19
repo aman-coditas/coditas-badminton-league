@@ -30,20 +30,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${appUrl}/login?error=${encodeURIComponent(errorDescription)}`);
   }
 
-  // Verify state to prevent CSRF
-  const storedState = request.cookies.get("oauth_state")?.value;
-  if (!state || state !== storedState) {
-    return NextResponse.redirect(`${appUrl}/login?error=Invalid+state`);
-  }
-
   if (!code) {
     return NextResponse.redirect(`${appUrl}/login?error=No+authorization+code`);
   }
 
-  // Get PKCE code verifier
-  const codeVerifier = request.cookies.get("oauth_code_verifier")?.value;
-  if (!codeVerifier) {
-    return NextResponse.redirect(`${appUrl}/login?error=Missing+code+verifier`);
+  if (!state) {
+    return NextResponse.redirect(`${appUrl}/login?error=Missing+state`);
+  }
+
+  // Decode state to get code verifier
+  let codeVerifier: string;
+  try {
+    const stateData = JSON.parse(atob(state));
+    codeVerifier = stateData.verifier;
+    if (!codeVerifier) {
+      throw new Error("No verifier in state");
+    }
+  } catch {
+    return NextResponse.redirect(`${appUrl}/login?error=Invalid+state`);
   }
 
   const clientId = process.env.CODITAS_CLIENT_ID;
@@ -101,10 +105,7 @@ export async function GET(request: NextRequest) {
     // Create response with redirect to home
     const response = NextResponse.redirect(appUrl);
 
-    // Clear the OAuth cookies
-    response.cookies.delete("oauth_state");
-    response.cookies.delete("oauth_code_verifier");
-
+    
     // Store session info in cookies (simplified - consider using a proper session library in production)
     response.cookies.set("cbl_session", JSON.stringify({
       access_token: tokens.access_token,
