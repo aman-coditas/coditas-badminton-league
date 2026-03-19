@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
 import { fetchIsRegistrationClosedCached } from "@/lib/api";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LogOut } from "lucide-react";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -114,17 +114,39 @@ export default function Navbar() {
                 </Link>
               );
             })}
+
+            {/* Logout Button */}
+            {pathname !== "/login" && (
+              <a
+                href="/api/auth/logout"
+                className="ml-2 p-2 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </a>
+            )}
           </div>
 
-          {/* Mobile Hamburger Button */}
-          <button
-            type="button"
-            className="md:hidden p-2 rounded-lg text-slate-600 hover:text-brand-violet hover:bg-slate-100 transition-colors"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label="Toggle menu"
-          >
-            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          {/* Mobile Buttons */}
+          <div className="flex items-center gap-1 md:hidden">
+            {pathname !== "/login" && (
+              <a
+                href="/api/auth/logout"
+                className="p-2 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </a>
+            )}
+            <button
+              type="button"
+              className="p-2 rounded-lg text-slate-600 hover:text-brand-violet hover:bg-slate-100 transition-colors"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle menu"
+            >
+              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
       </div>
 
