@@ -1,9 +1,13 @@
 "use client";
 
 import type { ComponentType, ReactNode } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { AlertCircle, Calendar, Check, Clock, Gift, MapPin, Medal, Target, Trophy, Users } from "lucide-react";
+import { AlertCircle, Calendar, Check, Clock, Gift, MapPin, Medal, Target, Trophy, Users, XCircle } from "lucide-react";
+import { fetchTeams } from "@/lib/api";
+
+const MAX_TEAMS = 32;
 
 function IconBulletList({
   icon: Icon,
@@ -112,9 +116,38 @@ const RACKETS = [
 ];
 
 export default function OverviewPage() {
+  const [isRegistrationClosed, setIsRegistrationClosed] = useState(false);
+
+  useEffect(() => {
+    fetchTeams()
+      .then((teams) => {
+        if (teams.length >= MAX_TEAMS) {
+          setIsRegistrationClosed(true);
+        }
+      })
+      .catch(() => {
+        // Ignore errors, just don't show the banner
+      });
+  }, []);
 
   return (
     <div className="container mx-auto px-4 py-6 md:py-10">
+      {/* Registration Closed Banner */}
+      {isRegistrationClosed && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3"
+        >
+          <XCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-amber-800">Registrations are now closed</h3>
+            <p className="text-sm text-amber-700 mt-1">
+              Individual registrants who were not assigned to a team will receive a full refund shortly. Thank you for your interest in CBL!
+            </p>
+          </div>
+        </motion.div>
+      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

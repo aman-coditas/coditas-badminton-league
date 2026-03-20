@@ -16,7 +16,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { convertFileToBase64, registerIndividual, registerTeam } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { convertFileToBase64, fetchTeams, registerIndividual, registerTeam } from "@/lib/api";
+
+const MAX_TEAMS = 32;
 
 const jersey_size_options = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"] as const;
 
@@ -337,9 +340,26 @@ function PlayerFields({
 const draft_storage_key_v2 = "cbl:registration:draft:v2";
 
 export default function RegistrationPage() {
+  const router = useRouter();
   const { toast } = useToast();
 
+  const [isCheckingCapacity, setIsCheckingCapacity] = useState(true);
   const [activeTab, setActiveTab] = useState<"team" | "individual">("team");
+
+  // Check if registrations are closed
+  useEffect(() => {
+    fetchTeams()
+      .then((teams) => {
+        if (teams.length >= MAX_TEAMS) {
+          router.replace("/");
+        } else {
+          setIsCheckingCapacity(false);
+        }
+      })
+      .catch(() => {
+        setIsCheckingCapacity(false);
+      });
+  }, [router]);
   const [hasAccepted, setHasAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -596,6 +616,16 @@ export default function RegistrationPage() {
       setIsSubmitting(false);
     }
   };
+
+  // Show loading while checking capacity
+  if (isCheckingCapacity) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-12 h-12 animate-spin text-neon-blue mb-4" />
+        <p className="text-gray-400">Checking availability...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-full md:max-w-[calc(100vw-4rem)] px-4 md:px-8 py-12">

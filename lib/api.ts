@@ -146,15 +146,23 @@ function write_registration_closed_to_storage(cache: RegistrationClosedCache) {
   }
 }
 
+const MAX_TEAMS = 32;
+
 async function fetch_is_registration_closed_uncached(): Promise<boolean> {
   const cache_bust = Date.now();
   const response = await axios.get<{
     success: boolean;
+    teams?: Team[];
     isRegistrationClosed?: boolean;
   }>(`${GAS_MAIN_URL}?action=teams&_ts=${cache_bust}`);
 
   if (!response.data?.success) return false;
-  return response.data.isRegistrationClosed === true;
+
+  // Check if API says closed OR if we have 32+ teams
+  if (response.data.isRegistrationClosed === true) return true;
+  if (Array.isArray(response.data.teams) && response.data.teams.length >= MAX_TEAMS) return true;
+
+  return false;
 }
 
 export const fetchIsRegistrationClosed = async (): Promise<boolean> => {
