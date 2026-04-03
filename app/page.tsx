@@ -437,11 +437,11 @@ export default function OverviewPage() {
                     </thead>
                     <tbody className="text-slate-800">
                       <tr className="border-b border-border/60">
-                        <td className="py-3 px-4">Men's Singles (MS)</td>
+                        <td className="py-3 px-4">Men’s Singles (MS)</td>
                         <td className="py-3 px-4 font-semibold">1 point</td>
                       </tr>
                       <tr className="border-b border-border/60">
-                        <td className="py-3 px-4">Women's Singles (WS)</td>
+                        <td className="py-3 px-4">Women’s Singles (WS)</td>
                         <td className="py-3 px-4 font-semibold">1 point</td>
                       </tr>
                       <tr className="border-b border-border/60">
@@ -591,7 +591,7 @@ export default function OverviewPage() {
                         </table>
                       </div>
                       <p className="text-xs text-orange-600 mt-2">
-                        The umpire's decision on time stalling is final and cannot be appealed.
+                        The umpire’s decision on time stalling is final and cannot be appealed.
                       </p>
                     </div>
                   </div>
