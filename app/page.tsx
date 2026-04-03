@@ -422,13 +422,78 @@ export default function OverviewPage() {
                 />
               </section>
 
-              <section className="space-y-2">
-                <h3 className="text-lg font-semibold text-brand-violet">Scoring &amp; Tie-Breakers</h3>
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold text-brand-violet">Scoring System &amp; Points</h3>
                 <p className="text-sm text-slate-700">
-                  Standard BWF scoring applies. For group standings, if two teams have equal points, the tie-breaker is <span className="font-semibold">Point Difference</span>:
+                  Points are awarded for winning individual games within each fixture:
                 </p>
-                <div className="rounded-lg border border-border bg-white/70 p-4 text-sm text-slate-700">
-                  Point Difference = Total Points Scored − Total Points Conceded
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm border border-border bg-white/70 rounded-lg">
+                    <thead>
+                      <tr className="text-left text-slate-700 border-b border-border">
+                        <th className="py-3 px-4">Game Category</th>
+                        <th className="py-3 px-4">Points for Win</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-slate-800">
+                      <tr className="border-b border-border/60">
+                        <td className="py-3 px-4">Men's Singles (MS)</td>
+                        <td className="py-3 px-4 font-semibold">1 point</td>
+                      </tr>
+                      <tr className="border-b border-border/60">
+                        <td className="py-3 px-4">Women's Singles (WS)</td>
+                        <td className="py-3 px-4 font-semibold">1 point</td>
+                      </tr>
+                      <tr className="border-b border-border/60">
+                        <td className="py-3 px-4">Mixed Doubles (XD)</td>
+                        <td className="py-3 px-4 font-semibold">1 point</td>
+                      </tr>
+                      <tr>
+                        <td className="py-3 px-4 font-semibold">Maximum per fixture</td>
+                        <td className="py-3 px-4 font-semibold text-brand-violet">3 points</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <IconBulletList
+                  icon={Target}
+                  items={[
+                    <>
+                      <span className="font-semibold">Group Stage Qualification:</span> The top team by total points in each group advances to the Quarter Finals.
+                    </>
+                  ]}
+                />
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold text-brand-violet">Game Scoring Rules</h3>
+                <IconBulletList
+                  icon={Target}
+                  items={[
+                    <>
+                      <span className="font-semibold">Points to Win:</span> Each game (MS, WS, XD) is played to 21 points.
+                    </>,
+                    <>
+                      <span className="font-semibold">No Deuce Rule:</span> First team/player to reach 21 points wins the game — no deuce extension.
+                    </>,
+                    <>
+                      <span className="font-semibold">20-20 Rule:</span> At 20-20, the next point wins — no extension beyond 21.
+                    </>,
+                  ]}
+                />
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-amber-800 mb-2">Time Limit per Game</h4>
+                      <ul className="text-sm text-amber-700 space-y-1">
+                        <li>• Each game must be completed within <span className="font-semibold">20 minutes</span></li>
+                        <li>• If time limit is reached, the game ends immediately</li>
+                        <li>• Team/player with higher score at that moment wins</li>
+                        <li>• In case of a tie when time is called, a single sudden-death point decides the winner</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </section>
 
@@ -445,6 +510,92 @@ export default function OverviewPage() {
                     </>,
                   ]}
                 />
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold text-brand-violet">Tournament-Specific Rules</h3>
+                
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-red-800 mb-3">Late Arrival Penalties</h4>
+                      <p className="text-sm text-red-700 mb-3">
+                        Teams must be present and ready to play at scheduled fixture time. Penalties are cumulative and apply to each game in the fixture:
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm border border-red-300 bg-white/80 rounded">
+                          <thead>
+                            <tr className="text-left text-red-800 border-b border-red-300">
+                              <th className="py-2 px-3">Time Late</th>
+                              <th className="py-2 px-3">Penalty</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-red-700">
+                            <tr className="border-b border-red-200">
+                              <td className="py-2 px-3">0 – 5 minutes</td>
+                              <td className="py-2 px-3">No penalty</td>
+                            </tr>
+                            <tr className="border-b border-red-200">
+                              <td className="py-2 px-3">5 minutes late</td>
+                              <td className="py-2 px-3 font-semibold">Opponent starts with +2 points</td>
+                            </tr>
+                            <tr className="border-b border-red-200">
+                              <td className="py-2 px-3">10 minutes late</td>
+                              <td className="py-2 px-3 font-semibold">Opponent starts with +4 points</td>
+                            </tr>
+                            <tr>
+                              <td className="py-2 px-3">15+ minutes late</td>
+                              <td className="py-2 px-3 font-semibold">NO-SHOW: Opponent wins entire fixture (3 points)</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-red-600 mt-2">
+                        Head-start points apply at the beginning of each game (MS, WS, XD). The umpire records arrival time and applies penalties.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Clock className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-orange-800 mb-3">Time Stalling Rules</h4>
+                      <p className="text-sm text-orange-700 mb-3">
+                        If the umpire determines that the leading team/player is deliberately wasting time to protect their score:
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm border border-orange-300 bg-white/80 rounded">
+                          <thead>
+                            <tr className="text-left text-orange-800 border-b border-orange-300">
+                              <th className="py-2 px-3">Offense</th>
+                              <th className="py-2 px-3">Consequence</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-orange-700">
+                            <tr className="border-b border-orange-200">
+                              <td className="py-2 px-3">1st Warning</td>
+                              <td className="py-2 px-3">Verbal warning — no points deducted</td>
+                            </tr>
+                            <tr className="border-b border-orange-200">
+                              <td className="py-2 px-3">2nd Warning</td>
+                              <td className="py-2 px-3 font-semibold">Opponent awarded +2 points immediately</td>
+                            </tr>
+                            <tr>
+                              <td className="py-2 px-3">3rd+ Warning</td>
+                              <td className="py-2 px-3 font-semibold">Umpire may award the game to opponent</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-orange-600 mt-2">
+                        The umpire's decision on time stalling is final and cannot be appealed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               <section className="space-y-2">
